@@ -4,8 +4,7 @@ import { M2T, T2M } from '../services/stats';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/UI';
 import { useTranslation } from '../hooks/useTranslation';
-import { useRegisterSW } from 'virtual:pwa-register/react';
-import { Download, Upload, RefreshCw } from 'lucide-react';
+import { Download, Upload } from 'lucide-react';
 
 // Independent input component to prevent re-renders of the whole list
 const DurationInput = ({ initialMinutes, onChange, onDelete, label }) => {
@@ -71,12 +70,6 @@ export const SettingsPage = () => {
     const { t } = useTranslation();
     const WEEKDAYS = t('weekday_labels');
 
-    // PWA Update Logic
-    const {
-        needRefresh: [needRefresh, setNeedRefresh],
-        updateServiceWorker,
-    } = useRegisterSW();
-
     const [backupMsg, setBackupMsg] = useState('');
 
     const saveSetting = async (key, value) => {
@@ -133,21 +126,6 @@ export const SettingsPage = () => {
     return (
         <div className="space-y-6 pb-24">
             <h2 className="text-2xl font-light">{t('settings_title')}</h2>
-
-            {/* PWA Update Check */}
-            <Card className="flex items-center justify-between p-4">
-                <div>
-                    <p className="font-bold opacity-80">App Version</p>
-                    <p className="text-xs opacity-50">Status: {needRefresh ? 'Update Available' : 'Latest'}</p>
-                </div>
-                <button
-                    onClick={() => updateServiceWorker(true)}
-                    className="bg-[var(--primary)] text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-2"
-                >
-                    <RefreshCw size={14} />
-                    Check Update
-                </button>
-            </Card>
 
             {/* Data Backup */}
             <Card className="space-y-4">
