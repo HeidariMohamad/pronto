@@ -27,9 +27,9 @@ export const DEFAULT_SETTINGS = {
     language: 'pt',
     tolerance: 10, // Default 10 minutes if enabled (legacy usage, now toggle)
     notify: false,
-    // Sun=[], Mon-Fri=[4h, 4h], Sat=[]
-    // 240 mins = 4 hours
-    targets: [[], [240, 240], [240, 240], [240, 240], [240, 240], [240, 240], []]
+    // Sun=[], Mon-Fri=[8h], Sat=[]
+    // 480 mins = 8 hours
+    targets: [[], [480], [480], [480], [480], [480], []]
 };
 
 // Initialize settings if empty

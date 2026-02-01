@@ -86,7 +86,7 @@ export const SettingsPage = () => {
                                     <button
                                         onClick={() => {
                                             const newTargets = [...settings.targets];
-                                            newTargets[dayIdx] = [...(newTargets[dayIdx] || []), 240]; // Add 4h default
+                                            newTargets[dayIdx] = [...(newTargets[dayIdx] || []), 480]; // Add 8h default
                                             saveSetting('targets', newTargets);
                                         }}
                                         className="text-xs bg-white/10 px-2 py-1 rounded-md hover:bg-white/20 transition-colors"
@@ -94,30 +94,61 @@ export const SettingsPage = () => {
                                         + Add Session
                                     </button>
                                 </div>
-                                {(settings.targets[dayIdx] || []).map((duration, sessionIdx) => (
-                                    <div key={sessionIdx} className="flex items-center gap-2">
-                                        <input
-                                            type="time"
-                                            value={M2T(duration)}
-                                            onChange={(e) => {
-                                                const newTargets = [...settings.targets];
-                                                newTargets[dayIdx][sessionIdx] = T2M(e.target.value);
-                                                saveSetting('targets', newTargets);
-                                            }}
-                                            className="bg-white/10 p-2 rounded-xl font-bold text-center w-full border-none outline-none"
-                                        />
-                                        <button
-                                            onClick={() => {
-                                                const newTargets = [...settings.targets];
-                                                newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
-                                                saveSetting('targets', newTargets);
-                                            }}
-                                            className="p-2 text-red-400 hover:bg-red-400/10 rounded-full"
-                                        >
-                                            ×
-                                        </button>
-                                    </div>
-                                ))}
+                                {(settings.targets[dayIdx] || []).map((duration, sessionIdx) => {
+                                    const h = Math.floor(duration / 60);
+                                    const m = duration % 60;
+                                    return (
+                                        <div key={sessionIdx} className="flex items-center gap-2">
+                                            <div className="flex-1 flex gap-2 bg-white/10 p-2 rounded-xl">
+                                                <div className="flex-1 relative">
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max="23"
+                                                        value={h}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value) || 0;
+                                                            const newTargets = [...settings.targets];
+                                                            newTargets[dayIdx][sessionIdx] = val * 60 + m;
+                                                            saveSetting('targets', newTargets);
+                                                        }}
+                                                        className="w-full bg-transparent text-center font-bold outline-none border-none"
+                                                        placeholder="0"
+                                                    />
+                                                    <span className="text-[10px] opacity-50 absolute top-0 right-1">H</span>
+                                                </div>
+                                                <div className="w-px bg-white/10"></div>
+                                                <div className="flex-1 relative">
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        max="59"
+                                                        value={m}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value) || 0;
+                                                            const newTargets = [...settings.targets];
+                                                            newTargets[dayIdx][sessionIdx] = h * 60 + val;
+                                                            saveSetting('targets', newTargets);
+                                                        }}
+                                                        className="w-full bg-transparent text-center font-bold outline-none border-none"
+                                                        placeholder="0"
+                                                    />
+                                                    <span className="text-[10px] opacity-50 absolute top-0 right-1">M</span>
+                                                </div>
+                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    const newTargets = [...settings.targets];
+                                                    newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
+                                                    saveSetting('targets', newTargets);
+                                                }}
+                                                className="p-3 text-red-400 hover:bg-red-400/10 rounded-xl"
+                                            >
+                                                ×
+                                            </button>
+                                        </div>
+                                    );
+                                })}
                                 {(!settings.targets[dayIdx] || settings.targets[dayIdx].length === 0) && (
                                     <p className="text-xs opacity-30 italic text-center py-2">No work scheduled</p>
                                 )}

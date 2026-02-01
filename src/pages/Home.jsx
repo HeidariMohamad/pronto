@@ -146,7 +146,7 @@ export const HomePage = () => {
                                     type="time"
                                     value={entry.time}
                                     onChange={(e) => updateEntry(entry.id, 'time', e.target.value)}
-                                    className="text-xl font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-24"
+                                    className="text-xl font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-32"
                                 />
                                 <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest">{entry.type}</p>
                             </div>
