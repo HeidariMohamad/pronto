@@ -16,6 +16,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   transition: background-color 0.2s ease;
+  overscroll-behavior-y: none;
 }
 
 /* Custom Component Classes bridging Tailwind and CSS Variables */
