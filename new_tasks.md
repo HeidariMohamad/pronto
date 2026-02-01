@@ -1,0 +1,13 @@
+
+- [ ] App Enhancements
+    - [ ] Single Theme Implementation
+        - [ ] Update `index.css` to use `#415a77` as default
+        - [ ] Remove theme switching logic from `App.jsx` and `Settings.jsx`
+    - [ ] Update PWA Icon
+        - [ ] Replace `pwa-192x192.png` and `pwa-512x512.png`
+        - [ ] Update `vite.config.js` if necessary (manifest check)
+    - [ ] Multi-language Support
+        - [ ] Add Persian (Farsi) to translation system
+        - [ ] Update `Settings.jsx` to include Persian
+    - [ ] Auto-save Verification
+        - [ ] Verify `useDailyRecord` persists data (Done)

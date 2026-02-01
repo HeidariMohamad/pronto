@@ -1,30 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --primary: #0b57d0;
-  --primary-container: #d3e3fd;
-  --on-primary-container: #041e49;
+  --primary: #415a77;
+  --primary-container: #dbe4f0;
+  --on-primary-container: #0d1218;
   --surface: #f8fafc;
   --container: #eff3f8;
   --on-container: #1f1f1f;
-}
-
-body.theme-olive {
-  --primary: #606c38;
-  --primary-container: #e9edc9;
-  --on-primary-container: #283618;
-  --surface: #fefae0;
-  --container: #f2f2e6;
-  --on-container: #1f1f1f;
-}
-
-body.theme-eastbay {
-  --primary: #415a77;
-  --primary-container: #1b263b;
-  --on-primary-container: #e0e1dd;
-  --surface: #1b263b;
-  --container: #2c3e50;
-  --on-container: #e0e1dd;
 }
 
 body {

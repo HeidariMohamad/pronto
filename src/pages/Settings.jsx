@@ -7,46 +7,35 @@ import { useTranslation } from '../hooks/useTranslation';
 
 export const SettingsPage = () => {
     const settings = useLiveQuery(() => db.settings.get('v8'));
-    const [localSettings, setLocalSettings] = useState(null);
-    const { t, lang } = useTranslation();
+    const { t } = useTranslation();
     const WEEKDAYS = t('weekday_labels');
 
-    useEffect(() => {
-        if (settings) setLocalSettings(settings);
-    }, [settings]);
-
-    const handleSave = async () => {
-        if (localSettings) {
-            await db.settings.put(localSettings);
-            applyTheme(localSettings.theme);
+    const saveSetting = async (key, value) => {
+        if (settings) {
+            await db.settings.update('v8', { [key]: value });
         }
     };
 
-    const applyTheme = (t) => {
-        document.body.className = t === 'default' ? '' : `theme-${t}`;
-        const colors = { default: '#0b57d0', olive: '#606c38', eastbay: '#1b263b' };
-        const meta = document.getElementById('meta-theme-color');
-        if (meta) meta.content = colors[t] || '#f8fafc';
-    };
-
-    const updateTarget = (dayIndex, timeStr) => {
-        const newTargets = [...localSettings.targets];
+    const updateTarget = async (dayIndex, timeStr) => {
+        if (!settings) return;
+        const newTargets = [...settings.targets];
         newTargets[dayIndex] = T2M(timeStr);
-        setLocalSettings({ ...localSettings, targets: newTargets });
+        await saveSetting('targets', newTargets);
     };
 
-    if (!localSettings) return <div className="p-6 text-center opacity-50">Carregando...</div>;
+    if (!settings) return <div className="p-6 text-center opacity-50">Carregando...</div>;
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24">
             <h2 className="text-2xl font-light">{t('settings_title')}</h2>
 
             {/* Language */}
             <Card className="space-y-4">
                 <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('lang_title')}</p>
                 <div className="flex gap-2">
-                    <button onClick={() => setLocalSettings({ ...localSettings, language: 'pt' })} className={`flex-1 py-3 rounded-xl border font-medium ${localSettings.language === 'pt' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>Português</button>
-                    <button onClick={() => setLocalSettings({ ...localSettings, language: 'en' })} className={`flex-1 py-3 rounded-xl border font-medium ${localSettings.language === 'en' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>English</button>
+                    <button onClick={() => saveSetting('language', 'pt')} className={`flex-1 py-3 rounded-xl border font-medium ${settings.language === 'pt' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>Português</button>
+                    <button onClick={() => saveSetting('language', 'en')} className={`flex-1 py-3 rounded-xl border font-medium ${settings.language === 'en' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>English</button>
+                    <button onClick={() => saveSetting('language', 'fa')} className={`flex-1 py-3 rounded-xl border font-medium ${settings.language === 'fa' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>فارسی</button>
                 </div>
             </Card>
 
@@ -58,9 +47,9 @@ export const SettingsPage = () => {
                     <label className="relative inline-flex items-center cursor-pointer">
                         <input
                             type="checkbox"
-                            checked={localSettings.notify}
+                            checked={settings.notify}
                             onChange={(e) => {
-                                setLocalSettings({ ...localSettings, notify: e.target.checked });
+                                saveSetting('notify', e.target.checked);
                                 if (e.target.checked && Notification.permission !== 'granted') Notification.requestPermission();
                             }}
                             className="sr-only peer"
@@ -70,24 +59,14 @@ export const SettingsPage = () => {
                 </div>
             </Card>
 
-            {/* Theme */}
-            <Card className="space-y-4">
-                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('theme_title')}</p>
-                <div className="flex gap-4">
-                    <button onClick={() => { setLocalSettings({ ...localSettings, theme: 'default' }); applyTheme('default'); }} className={`w-10 h-10 rounded-full bg-[#0b57d0] border-4 shadow-sm ${localSettings.theme === 'default' ? 'border-white ring-2 ring-blue-400' : 'border-transparent'}`}></button>
-                    <button onClick={() => { setLocalSettings({ ...localSettings, theme: 'olive' }); applyTheme('olive'); }} className={`w-10 h-10 rounded-full bg-[#606c38] border-4 shadow-sm ${localSettings.theme === 'olive' ? 'border-white ring-2 ring-green-700' : 'border-transparent'}`}></button>
-                    <button onClick={() => { setLocalSettings({ ...localSettings, theme: 'eastbay' }); applyTheme('eastbay'); }} className={`w-10 h-10 rounded-full bg-[#415a77] border-4 shadow-sm ${localSettings.theme === 'eastbay' ? 'border-white ring-2 ring-blue-900' : 'border-transparent'}`}></button>
-                </div>
-            </Card>
-
             {/* Schedule */}
             <Card className="space-y-6">
                 <div>
                     <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-2 tracking-widest">{t('tolerance')}</label>
                     <input
                         type="number"
-                        value={localSettings.tolerance}
-                        onChange={(e) => setLocalSettings({ ...localSettings, tolerance: parseInt(e.target.value) || 0 })}
+                        value={settings.tolerance}
+                        onChange={(e) => saveSetting('tolerance', parseInt(e.target.value) || 0)}
                         className="w-full bg-white/10 p-4 rounded-2xl border-none text-xl font-medium outline-none"
                     />
                 </div>
@@ -99,7 +78,7 @@ export const SettingsPage = () => {
                                 <span className="font-medium opacity-80 text-sm">{day}</span>
                                 <input
                                     type="time"
-                                    value={M2T(localSettings.targets[idx])}
+                                    value={M2T(settings.targets[idx])}
                                     onChange={(e) => updateTarget(idx, e.target.value)}
                                     className="bg-white/10 p-2 rounded-xl font-bold text-center w-24 border-none outline-none"
                                 />
@@ -107,7 +86,6 @@ export const SettingsPage = () => {
                         ))}
                     </div>
                 </div>
-                <button onClick={handleSave} className="w-full bg-[var(--primary)] text-white py-4 rounded-full font-medium shadow-md active:scale-95 transition-transform">{t('save')}</button>
             </Card>
         </div>
     );

@@ -11,18 +11,9 @@ function App() {
   const [loading, setLoading] = React.useState(true);
 
   useEffect(() => {
-    // Load saved theme on startup
-    const loadTheme = async () => {
-      const s = await db.settings.get('v8');
-      if (s && s.theme) {
-        const t = s.theme;
-        document.body.className = t === 'default' ? '' : `theme-${t}`;
-        const colors = { default: '#0b57d0', olive: '#606c38', eastbay: '#1b263b' };
-        const meta = document.getElementById('meta-theme-color');
-        if (meta) meta.content = colors[t] || '#f8fafc';
-      }
-    };
-    loadTheme();
+    // Single theme enforcement - ensure meta tag matches
+    const meta = document.getElementById('meta-theme-color');
+    if (meta) meta.content = '#f8fafc';
   }, []);
 
   return (
