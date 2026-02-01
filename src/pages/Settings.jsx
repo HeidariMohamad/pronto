@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import { db } from '../services/db';
 import { M2T, T2M } from '../services/stats';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -6,58 +6,47 @@ import { Card } from '../components/UI';
 import { useTranslation } from '../hooks/useTranslation';
 import { Download, Upload } from 'lucide-react';
 
-// Independent input component to prevent re-renders of the whole list
-const DurationInput = ({ initialMinutes, onChange, onDelete, label }) => {
-    const [h, setH] = useState(Math.floor(initialMinutes / 60));
-    const [m, setM] = useState(initialMinutes % 60);
+// Time Range Input Component (Start - End)
+const ShiftTimeInput = ({ value, onChange, onDelete }) => {
+    const [start, setStart] = useState(value?.start || '08:00');
+    const [end, setEnd] = useState(value?.end || '17:00');
 
-    // Sync if initial value changes externally
     useEffect(() => {
-        setH(Math.floor(initialMinutes / 60));
-        setM(initialMinutes % 60);
-    }, [initialMinutes]);
+        setStart(value?.start || '08:00');
+        setEnd(value?.end || '17:00');
+    }, [value]);
 
     const handleBlur = () => {
-        const total = (parseInt(h) || 0) * 60 + (parseInt(m) || 0);
-        if (total !== initialMinutes) {
-            onChange(total);
+        if (start !== value?.start || end !== value?.end) {
+            onChange({ start, end });
         }
     };
 
     return (
         <div className="flex items-center gap-2">
-            <div className="flex-1 flex gap-2 bg-white/10 p-2 rounded-xl">
-                <div className="flex-1 relative">
-                    <input
-                        type="number"
-                        min="0"
-                        max="23"
-                        value={h}
-                        onChange={(e) => setH(e.target.value)}
-                        onBlur={handleBlur}
-                        className="w-full bg-transparent text-center font-bold outline-none border-none"
-                        placeholder="0"
-                    />
-                    <span className="text-[10px] opacity-50 absolute top-0 right-1">H</span>
-                </div>
-                <div className="w-px bg-white/10"></div>
-                <div className="flex-1 relative">
-                    <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        value={m}
-                        onChange={(e) => setM(e.target.value)}
-                        onBlur={handleBlur}
-                        className="w-full bg-transparent text-center font-bold outline-none border-none"
-                        placeholder="0"
-                    />
-                    <span className="text-[10px] opacity-50 absolute top-0 right-1">M</span>
-                </div>
+            <div className="flex-1 bg-black/30 rounded-xl p-3 flex items-center justify-center">
+                <input
+                    type="time"
+                    value={start}
+                    onChange={(e) => setStart(e.target.value)}
+                    onBlur={handleBlur}
+                    className="bg-transparent font-medium outline-none border-none text-center w-full appearance-none"
+                />
+            </div>
+            <span className="opacity-30 text-sm">-</span>
+            <div className="flex-1 bg-black/30 rounded-xl p-3 flex items-center justify-center">
+                <input
+                    type="time"
+                    value={end}
+                    onChange={(e) => setEnd(e.target.value)}
+                    onBlur={handleBlur}
+                    className="bg-transparent font-medium outline-none border-none text-center w-full appearance-none"
+                />
             </div>
             <button
                 onClick={onDelete}
-                className="p-3 text-red-400 hover:bg-red-400/10 rounded-xl"
+                className="p-2 text-red-500/60 hover:text-red-500 text-lg"
+                title="Remove shift"
             >
                 ×
             </button>
@@ -65,10 +54,73 @@ const DurationInput = ({ initialMinutes, onChange, onDelete, label }) => {
     );
 };
 
+// Weekly Schedule Editor with Time Range Inputs and Total Hours
+const WeeklyScheduleEditor = ({ targets, onChange }) => {
+    const { t } = useTranslation();
+    const WEEKDAYS = t('weekday_labels');
+
+    const calculateTotal = (dayShifts) => {
+        if (!dayShifts) return 0;
+        return dayShifts.reduce((acc, shift) => {
+            if (shift && shift.start && shift.end) {
+                return acc + Math.max(0, T2M(shift.end) - T2M(shift.start));
+            }
+            return acc;
+        }, 0);
+    };
+
+    return (
+        <div className="space-y-4">
+            {WEEKDAYS.map((day, dayIdx) => {
+                const dayShifts = targets[dayIdx] || [];
+                const totalMinutes = calculateTotal(dayShifts);
+
+                return (
+                    <div key={dayIdx} className="bg-white/5 rounded-2xl p-4 space-y-3 border border-white/5">
+                        <div className="flex justify-between items-end">
+                            <span className="font-bold opacity-70 text-xs uppercase tracking-widest">{day}</span>
+                            <span className="font-medium text-[var(--primary)] text-sm">{M2T(totalMinutes)}h</span>
+                        </div>
+
+                        <div className="space-y-2">
+                            {dayShifts.map((shift, sessionIdx) => (
+                                <ShiftTimeInput
+                                    key={sessionIdx}
+                                    value={shift}
+                                    onChange={(newVal) => {
+                                        const newTargets = targets.map((d, i) => i === dayIdx ? [...d] : d);
+                                        newTargets[dayIdx][sessionIdx] = newVal;
+                                        onChange(newTargets);
+                                    }}
+                                    onDelete={() => {
+                                        const newTargets = targets.map((d, i) => i === dayIdx ? [...d] : d);
+                                        newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
+                                        onChange(newTargets);
+                                    }}
+                                />
+                            ))}
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                const newTargets = targets.map((d, i) => i === dayIdx ? [...(d || [])] : (d || []));
+                                newTargets[dayIdx].push({ start: '08:00', end: '12:00' });
+                                onChange(newTargets);
+                            }}
+                            className="w-full py-2.5 bg-white/5 rounded-xl text-xs font-medium opacity-50 hover:opacity-100 hover:bg-white/10 transition-all"
+                        >
+                            + Horário
+                        </button>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
 export const SettingsPage = () => {
     const settings = useLiveQuery(() => db.settings.get('v8'));
     const { t } = useTranslation();
-    const WEEKDAYS = t('weekday_labels');
 
     const [backupMsg, setBackupMsg] = useState('');
 
@@ -82,7 +134,8 @@ export const SettingsPage = () => {
         try {
             const records = await db.records.toArray();
             const config = await db.settings.toArray();
-            const data = { records, settings: config };
+            const sems = await db.semesters.toArray();
+            const data = { records, settings: config, semesters: sems };
             const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -108,9 +161,12 @@ export const SettingsPage = () => {
                     await db.records.bulkAdd(data.records);
                 }
                 if (data.settings && data.settings[0]) {
-                    // Restore settings but keep ID 'v8' just in case
                     const s = { ...data.settings[0], id: 'v8' };
                     await db.settings.put(s);
+                }
+                if (data.semesters) {
+                    await db.semesters.clear();
+                    await db.semesters.bulkAdd(data.semesters);
                 }
                 setBackupMsg('Data restored! Reloading...');
                 setTimeout(() => window.location.reload(), 1500);
@@ -152,9 +208,10 @@ export const SettingsPage = () => {
                 </div>
             </Card>
 
-            {/* Notifications */}
+            {/* Preferences (Notifications & Tolerance) */}
             <Card className="space-y-4">
-                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('notify_title')}</p>
+                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">Preferences</p>
+
                 <div className="flex items-center justify-between">
                     <span className="text-sm">{t('notify_desc')}</span>
                     <label className="relative inline-flex items-center cursor-pointer">
@@ -165,6 +222,19 @@ export const SettingsPage = () => {
                                 saveSetting('notify', e.target.checked);
                                 if (e.target.checked && Notification.permission !== 'granted') Notification.requestPermission();
                             }}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-300 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
+                    </label>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-sm">{t('tolerance')} (10 min)</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={!!settings.tolerance}
+                            onChange={(e) => saveSetting('tolerance', e.target.checked ? 10 : 0)}
                             className="sr-only peer"
                         />
                         <div className="w-11 h-6 bg-slate-300 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
@@ -182,7 +252,7 @@ export const SettingsPage = () => {
                                 name: 'New Semester',
                                 startDate: new Date().toISOString().split('T')[0],
                                 endDate: new Date().toISOString().split('T')[0],
-                                targets: [[], [480], [480], [480], [480], [480], []]
+                                targets: [[], [], [], [], [], [], []]
                             });
                         }}
                         className="text-xs bg-[var(--primary)] text-white px-3 py-1.5 rounded-lg font-bold"
@@ -192,83 +262,7 @@ export const SettingsPage = () => {
                 </div>
 
                 <SemesterList />
-
-                <p className="text-[10px] opacity-40 text-center uppercase tracking-widest mt-4">
-                    Or Default Schedule
-                </p>
             </Card>
-
-            {/* Default Schedule (Fallback) */}
-            <Card className="space-y-6">
-                <div>
-                    <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-2 tracking-widest">{t('tolerance')}</label>
-                    <div className="flex items-center justify-between">
-                        <span className="text-sm opacity-70">10 Minutes Tolerance</span>
-                        <label className="relative inline-flex items-center cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={!!settings.tolerance}
-                                onChange={(e) => saveSetting('tolerance', e.target.checked ? 10 : 0)}
-                                className="sr-only peer"
-                            />
-                            <div className="w-11 h-6 bg-slate-300 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
-                        </label>
-                    </div>
-                </div>
-                <div>
-                    <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-4 tracking-widest">Default Journey</label>
-                    <WeeklyScheduleEditor
-                        targets={settings.targets}
-                        onChange={(newTargets) => saveSetting('targets', newTargets)}
-                    />
-                </div>
-            </Card>
-        </div>
-    );
-};
-
-const WeeklyScheduleEditor = ({ targets, onChange }) => {
-    const { t } = useTranslation();
-    const WEEKDAYS = t('weekday_labels');
-
-    return (
-        <div className="space-y-4">
-            {WEEKDAYS.map((day, dayIdx) => (
-                <div key={dayIdx} className="bg-white/5 rounded-2xl p-4 space-y-3">
-                    <div className="flex justify-between items-center mb-2">
-                        <span className="font-medium opacity-80 text-sm">{day}</span>
-                        <button
-                            onClick={() => {
-                                const newTargets = [...targets];
-                                newTargets[dayIdx] = [...(newTargets[dayIdx] || []), 480];
-                                onChange(newTargets);
-                            }}
-                            className="text-xs bg-white/10 px-2 py-1 rounded-md hover:bg-white/20 transition-colors"
-                        >
-                            + Add Session
-                        </button>
-                    </div>
-                    {(targets[dayIdx] || []).map((duration, sessionIdx) => (
-                        <DurationInput
-                            key={sessionIdx}
-                            initialMinutes={duration}
-                            onChange={(newVal) => {
-                                const newTargets = [...targets];
-                                newTargets[dayIdx][sessionIdx] = newVal;
-                                onChange(newTargets);
-                            }}
-                            onDelete={() => {
-                                const newTargets = [...targets];
-                                newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
-                                onChange(newTargets);
-                            }}
-                        />
-                    ))}
-                    {(!targets[dayIdx] || targets[dayIdx].length === 0) && (
-                        <p className="text-xs opacity-30 italic text-center py-2">No work scheduled</p>
-                    )}
-                </div>
-            ))}
         </div>
     );
 };
