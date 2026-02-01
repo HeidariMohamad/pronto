@@ -9,6 +9,17 @@
   --on-container: #e0e6ed;
 }
 
+html,
+body {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+}
+
 body {
   font-family: 'Roboto', sans-serif;
   background-color: var(--surface);
@@ -16,7 +27,14 @@ body {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   transition: background-color 0.2s ease;
-  overscroll-behavior-y: none;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 /* Custom Component Classes bridging Tailwind and CSS Variables */
