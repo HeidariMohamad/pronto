@@ -172,7 +172,33 @@ export const SettingsPage = () => {
                 </div>
             </Card>
 
-            {/* Schedule */}
+            {/* Semester Management */}
+            <Card className="space-y-6">
+                <div className="flex justify-between items-center">
+                    <p className="text-xs font-bold opacity-50 uppercase tracking-widest">Semesters</p>
+                    <button
+                        onClick={async () => {
+                            await db.semesters.add({
+                                name: 'New Semester',
+                                startDate: new Date().toISOString().split('T')[0],
+                                endDate: new Date().toISOString().split('T')[0],
+                                targets: [[], [480], [480], [480], [480], [480], []]
+                            });
+                        }}
+                        className="text-xs bg-[var(--primary)] text-white px-3 py-1.5 rounded-lg font-bold"
+                    >
+                        + Add
+                    </button>
+                </div>
+
+                <SemesterList />
+
+                <p className="text-[10px] opacity-40 text-center uppercase tracking-widest mt-4">
+                    Or Default Schedule
+                </p>
+            </Card>
+
+            {/* Default Schedule (Fallback) */}
             <Card className="space-y-6">
                 <div>
                     <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-2 tracking-widest">{t('tolerance')}</label>
@@ -190,47 +216,133 @@ export const SettingsPage = () => {
                     </div>
                 </div>
                 <div>
-                    <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-4 tracking-widest">{t('journey')}</label>
-                    <div className="space-y-4">
-                        {WEEKDAYS.map((day, dayIdx) => (
-                            <div key={dayIdx} className="bg-white/5 rounded-2xl p-4 space-y-3">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="font-medium opacity-80 text-sm">{day}</span>
-                                    <button
-                                        onClick={() => {
-                                            const newTargets = [...settings.targets];
-                                            newTargets[dayIdx] = [...(newTargets[dayIdx] || []), 480]; // Add 8h default
-                                            saveSetting('targets', newTargets);
-                                        }}
-                                        className="text-xs bg-white/10 px-2 py-1 rounded-md hover:bg-white/20 transition-colors"
-                                    >
-                                        + Add Session
-                                    </button>
-                                </div>
-                                {(settings.targets[dayIdx] || []).map((duration, sessionIdx) => (
-                                    <DurationInput
-                                        key={sessionIdx}
-                                        initialMinutes={duration}
-                                        onChange={(newVal) => {
-                                            const newTargets = [...settings.targets];
-                                            newTargets[dayIdx][sessionIdx] = newVal;
-                                            saveSetting('targets', newTargets);
-                                        }}
-                                        onDelete={() => {
-                                            const newTargets = [...settings.targets];
-                                            newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
-                                            saveSetting('targets', newTargets);
-                                        }}
-                                    />
-                                ))}
-                                {(!settings.targets[dayIdx] || settings.targets[dayIdx].length === 0) && (
-                                    <p className="text-xs opacity-30 italic text-center py-2">No work scheduled</p>
-                                )}
-                            </div>
-                        ))}
-                    </div>
+                    <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-4 tracking-widest">Default Journey</label>
+                    <WeeklyScheduleEditor
+                        targets={settings.targets}
+                        onChange={(newTargets) => saveSetting('targets', newTargets)}
+                    />
                 </div>
             </Card>
+        </div>
+    );
+};
+
+const WeeklyScheduleEditor = ({ targets, onChange }) => {
+    const { t } = useTranslation();
+    const WEEKDAYS = t('weekday_labels');
+
+    return (
+        <div className="space-y-4">
+            {WEEKDAYS.map((day, dayIdx) => (
+                <div key={dayIdx} className="bg-white/5 rounded-2xl p-4 space-y-3">
+                    <div className="flex justify-between items-center mb-2">
+                        <span className="font-medium opacity-80 text-sm">{day}</span>
+                        <button
+                            onClick={() => {
+                                const newTargets = [...targets];
+                                newTargets[dayIdx] = [...(newTargets[dayIdx] || []), 480];
+                                onChange(newTargets);
+                            }}
+                            className="text-xs bg-white/10 px-2 py-1 rounded-md hover:bg-white/20 transition-colors"
+                        >
+                            + Add Session
+                        </button>
+                    </div>
+                    {(targets[dayIdx] || []).map((duration, sessionIdx) => (
+                        <DurationInput
+                            key={sessionIdx}
+                            initialMinutes={duration}
+                            onChange={(newVal) => {
+                                const newTargets = [...targets];
+                                newTargets[dayIdx][sessionIdx] = newVal;
+                                onChange(newTargets);
+                            }}
+                            onDelete={() => {
+                                const newTargets = [...targets];
+                                newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
+                                onChange(newTargets);
+                            }}
+                        />
+                    ))}
+                    {(!targets[dayIdx] || targets[dayIdx].length === 0) && (
+                        <p className="text-xs opacity-30 italic text-center py-2">No work scheduled</p>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+};
+
+const SemesterList = () => {
+    const semesters = useLiveQuery(() => db.semesters.toArray());
+    const [expandedId, setExpandedId] = useState(null);
+
+    if (!semesters?.length) return <div className="text-center opacity-30 text-sm py-4">No semesters defined</div>;
+
+    return (
+        <div className="space-y-4">
+            {semesters.map(sem => (
+                <div key={sem.id} className="bg-white/5 rounded-2xl overflow-hidden border border-white/5">
+                    <div
+                        className="p-4 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-colors"
+                        onClick={() => setExpandedId(expandedId === sem.id ? null : sem.id)}
+                    >
+                        <div>
+                            <input
+                                value={sem.name}
+                                onClick={(e) => e.stopPropagation()}
+                                onChange={(e) => db.semesters.update(sem.id, { name: e.target.value })}
+                                className="bg-transparent font-bold border-none p-0 focus:ring-0 outline-none w-full"
+                            />
+                            <p className="text-xs opacity-50 mt-1">
+                                {sem.startDate} — {sem.endDate}
+                            </p>
+                        </div>
+                        <div className="text-xs opacity-50">
+                            {expandedId === sem.id ? 'Close' : 'Edit'}
+                        </div>
+                    </div>
+
+                    {expandedId === sem.id && (
+                        <div className="p-4 border-t border-white/10 bg-black/20 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-[10px] opacity-50 uppercase tracking-widest block mb-1">Start</label>
+                                    <input
+                                        type="date"
+                                        value={sem.startDate}
+                                        onChange={(e) => db.semesters.update(sem.id, { startDate: e.target.value })}
+                                        className="w-full bg-white/10 border-none rounded-lg text-sm p-2"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] opacity-50 uppercase tracking-widest block mb-1">End</label>
+                                    <input
+                                        type="date"
+                                        value={sem.endDate}
+                                        onChange={(e) => db.semesters.update(sem.id, { endDate: e.target.value })}
+                                        className="w-full bg-white/10 border-none rounded-lg text-sm p-2"
+                                    />
+                                </div>
+                            </div>
+
+                            <WeeklyScheduleEditor
+                                targets={sem.targets}
+                                onChange={(newTargets) => db.semesters.update(sem.id, { targets: newTargets })}
+                            />
+
+                            <button
+                                onClick={() => {
+                                    if (confirm('Delete semester?')) db.semesters.delete(sem.id);
+                                }}
+                                className="w-full py-3 text-red-400 bg-red-400/10 rounded-xl text-sm font-bold mt-4"
+                            >
+                                Delete Semester
+                            </button>
+                        </div>
+                    )}
+                </div>
+            ))}
         </div>
     );
 };

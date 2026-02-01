@@ -8,12 +8,20 @@ export function useDailyRecord(dateStr = getTodayISO()) {
         [dateStr]
     );
 
+
     const settings = useLiveQuery(() => db.settings.get('v8'));
+    const semester = useLiveQuery(async () => {
+        const semesters = await db.semesters.toArray();
+        return semesters.find(s => dateStr >= s.startDate && dateStr <= s.endDate);
+    }, [dateStr]);
+
+    const activeTargets = semester ? semester.targets : (settings?.targets || []);
+    const tolerance = settings?.tolerance ? 10 : 0;
 
     const stats = calculateDailyStats(
         record?.entries || [],
-        settings ? settings.targets[new Date(dateStr).getDay()] : [],
-        settings?.tolerance ? 10 : 0 // Toggle: If true => 10, else 0
+        activeTargets[new Date(dateStr).getDay()] || [],
+        tolerance
     );
 
     const addEntry = async (time, type, photo = null) => {

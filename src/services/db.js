@@ -5,6 +5,7 @@ export const db = new Dexie('ProntoDB');
 db.version(1).stores({
     records: 'date, note', // 'date' is the primary key (YYYY-MM-DD)
     settings: 'id', // Singleton setting with id='v8'
+    semesters: '++id, startDate, endDate', // New table for semesters
     pending_sync: '++id, collection, docId, action, data' // Queue for sync
 });
 
@@ -18,6 +19,11 @@ export const toLocalISOString = (date) => {
 
 export const getTodayISO = () => {
     return toLocalISOString(new Date());
+};
+
+export const getSemesterForDate = async (dateStr) => {
+    const semesters = await db.semesters.toArray();
+    return semesters.find(s => dateStr >= s.startDate && dateStr <= s.endDate);
 };
 
 // Default Settings
