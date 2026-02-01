@@ -27,9 +27,17 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     let isOpen = false;
     let completedSessions = 0;
 
-    // Ensure targetSessions is an array (handle legacy data)
+    // Ensure targetSessions is an array
     const targets = Array.isArray(targetSessions) ? targetSessions : [targetSessions || 0];
-    const totalTarget = targets.reduce((a, b) => a + b, 0);
+
+    // Calculate total target from durations or time ranges
+    const totalTarget = targets.reduce((acc, sess) => {
+        if (typeof sess === 'number') return acc + sess;
+        if (sess && sess.start && sess.end) {
+            return acc + Math.max(0, T2M(sess.end) - T2M(sess.start));
+        }
+        return acc;
+    }, 0);
 
     // Sort by time
     const sorted = [...entries].sort((a, b) => T2M(a.time) - T2M(b.time));
@@ -63,14 +71,18 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     if (isOpen) {
         // Current session index is 'completedSessions'
         // If we have more sessions than defined targets, fallback to the last defined target or 0
-        const currentTarget = targets[completedSessions] || 0;
+        const currentTargetObj = targets[completedSessions];
+        let currentTargetDuration = 0;
 
-        // Prediction = lastIn + currentTarget
-        // Note: Tolerance is usually applied to the FINAL balance, not per session. 
-        // User requested "tolerance is fixed 10 minutes". Usually this implies everyday tolerance.
-        // For prediction, we usually aim for the exact target of the session.
-        if (currentTarget > 0) {
-            prediction = lastIn + currentTarget;
+        if (typeof currentTargetObj === 'number') {
+            currentTargetDuration = currentTargetObj;
+        } else if (currentTargetObj && currentTargetObj.start && currentTargetObj.end) {
+            currentTargetDuration = Math.max(0, T2M(currentTargetObj.end) - T2M(currentTargetObj.start));
+        }
+
+        // Prediction = lastIn + currentTargetDuration
+        if (currentTargetDuration > 0) {
+            prediction = lastIn + currentTargetDuration;
         }
     }
 

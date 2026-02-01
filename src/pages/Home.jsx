@@ -131,13 +131,13 @@ export const HomePage = () => {
             {/* Timeline */}
             <div className="space-y-2">
                 {[...(record.entries || [])].sort((a, b) => (T2M(a.time) || 0) - (T2M(b.time) || 0)).map(entry => (
-                    <Card key={entry.id} className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-4">
+                    <Card key={entry.id} className="p-3 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
                             {entry.photo ? (
-                                <img src={entry.photo} className="w-12 h-12 rounded-xl object-cover cursor-pointer" />
+                                <img src={entry.photo} className="w-10 h-10 rounded-lg object-cover cursor-pointer" />
                             ) : (
-                                <label className="w-12 h-12 rounded-xl bg-black/5 dark:bg-white/10 flex items-center justify-center text-slate-400 border-2 border-dashed border-black/10 dark:border-white/20 cursor-pointer overflow-hidden relative">
-                                    <Camera size={20} />
+                                <label className="w-10 h-10 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center text-slate-400 border-2 border-dashed border-black/10 dark:border-white/20 cursor-pointer overflow-hidden relative">
+                                    <Camera size={16} />
                                     <input type="file" accept="image/*" className="hidden" capture="environment" onChange={(e) => handlePhoto(e, entry.id)} />
                                 </label>
                             )}
@@ -146,12 +146,12 @@ export const HomePage = () => {
                                     type="time"
                                     value={entry.time}
                                     onChange={(e) => updateEntry(entry.id, 'time', e.target.value)}
-                                    className="text-xl font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-32"
+                                    className="text-lg font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-28"
                                 />
-                                <p className="text-[10px] font-bold opacity-40 uppercase tracking-widest">{entry.type}</p>
+                                <p className="text-[9px] font-bold opacity-40 uppercase tracking-widest">{entry.type}</p>
                             </div>
                         </div>
-                        <button onClick={() => confirmDelete(entry.id)} className="p-2 text-red-500 opacity-60 hover:opacity-100"><Trash2 size={20} /></button>
+                        <button onClick={() => confirmDelete(entry.id)} className="p-2 text-red-500 opacity-60 hover:opacity-100"><Trash2 size={18} /></button>
                     </Card>
                 ))}
                 {record.entries?.length === 0 && <p className="text-center opacity-30 text-sm py-4">{t('no_records_today')}</p>}
