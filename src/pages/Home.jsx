@@ -66,14 +66,32 @@ export const HomePage = () => {
 
     const WEEKDAYS = t('weekday_labels');
 
+    const handleDateChange = (e) => {
+        if (e.target.value) {
+            setActiveDate(new Date(e.target.value + 'T00:00:00'));
+        }
+    };
+
+    // Calculate next action type
+    const count = record.entries?.length || 0;
+    const nextAction = count % 2 === 0 ? 'entry' : 'exit';
+
     return (
         <div className="space-y-4 pb-32">
             {/* Date Nav */}
             <div className="flex items-center justify-between px-2">
                 <button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10"><ChevronLeft size={24} /></button>
-                <div className="text-center">
+                <div className="text-center relative">
                     <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-widest">{WEEKDAYS[activeDate.getDay()]}</p>
-                    <p className="text-lg font-normal">{activeDate.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { day: 'numeric', month: 'long' })}</p>
+                    <label className="text-lg font-normal cursor-pointer flex items-center justify-center gap-2">
+                        {activeDate.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { day: 'numeric', month: 'long' })}
+                        <input
+                            type="date"
+                            className="absolute opacity-0 inset-0 w-full h-full cursor-pointer"
+                            onChange={handleDateChange}
+                            value={activeDate.toISOString().split('T')[0]}
+                        />
+                    </label>
                 </div>
                 <button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10"><ChevronRight size={24} /></button>
             </div>
@@ -103,9 +121,9 @@ export const HomePage = () => {
 
             {/* FAB */}
             <div className="flex justify-center py-4">
-                <Fab onClick={handleQuickStamp}>
-                    <Fingerprint className="w-6 h-6" />
-                    <span className="text-lg font-medium">{t('register')}</span>
+                <Fab onClick={handleQuickStamp} className="px-8 py-4 h-auto rounded-2xl">
+                    <Fingerprint className="w-6 h-6 mr-2" />
+                    <span className="text-lg font-medium tracking-wide">{t(nextAction)}</span>
                 </Fab>
             </div>
 

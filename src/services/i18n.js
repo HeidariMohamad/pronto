@@ -55,8 +55,8 @@ export const translations = {
         delete_modal_desc: 'This action cannot be undone.',
         cancel: 'Cancel',
         delete: 'Delete',
-        entry: 'In',
-        exit: 'Out',
+        entry: 'Entrance',
+        exit: 'Exit',
         no_records_today: 'No records today.'
     },
     fa: {
