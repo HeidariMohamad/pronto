@@ -66,23 +66,14 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     const effectiveTarget = Math.max(0, totalTarget - tolerance);
     const balance = totalWorked - effectiveTarget;
 
-    // Prediction: Based on CURRENT session target
+    // Prediction: Goal is to reach Total Daily Target (Zero Balance)
+    // Formula: Prediction = LastIn + (TotalTarget - WorkedSoFar)
     let prediction = null;
     if (isOpen) {
-        // Current session index is 'completedSessions'
-        // If we have more sessions than defined targets, fallback to the last defined target or 0
-        const currentTargetObj = targets[completedSessions];
-        let currentTargetDuration = 0;
+        const remainingToGoal = Math.max(0, totalTarget - worked);
 
-        if (typeof currentTargetObj === 'number') {
-            currentTargetDuration = currentTargetObj;
-        } else if (currentTargetObj && currentTargetObj.start && currentTargetObj.end) {
-            currentTargetDuration = Math.max(0, T2M(currentTargetObj.end) - T2M(currentTargetObj.start));
-        }
-
-        // Prediction = lastIn + currentTargetDuration
-        if (currentTargetDuration > 0) {
-            prediction = lastIn + currentTargetDuration;
+        if (remainingToGoal > 0) {
+            prediction = lastIn + remainingToGoal;
         }
     }
 
