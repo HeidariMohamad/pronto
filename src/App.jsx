@@ -13,7 +13,7 @@ function App() {
   useEffect(() => {
     // Single theme enforcement - ensure meta tag matches
     const meta = document.getElementById('meta-theme-color');
-    if (meta) meta.content = '#f8fafc';
+    if (meta) meta.content = '#0d1520';
   }, []);
 
   return (

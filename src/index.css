@@ -2,11 +2,11 @@
 
 :root {
   --primary: #415a77;
-  --primary-container: #dbe4f0;
-  --on-primary-container: #0d1218;
-  --surface: #f8fafc;
-  --container: #eff3f8;
-  --on-container: #1f1f1f;
+  --primary-container: #415a77;
+  --on-primary-container: #ffffff;
+  --surface: #0d1520;
+  --container: #1b263b;
+  --on-container: #e0e6ed;
 }
 
 body {
