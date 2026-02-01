@@ -12,8 +12,8 @@ export function useDailyRecord(dateStr = getTodayISO()) {
 
     const stats = calculateDailyStats(
         record?.entries || [],
-        settings ? settings.targets[new Date(dateStr).getDay()] : 0,
-        settings?.tolerance || 0
+        settings ? settings.targets[new Date(dateStr).getDay()] : [],
+        settings?.tolerance ? 10 : 0 // Toggle: If true => 10, else 0
     );
 
     const addEntry = async (time, type, photo = null) => {

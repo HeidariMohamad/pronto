@@ -17,56 +17,61 @@ export const M2T = (m) => {
 /**
  * Calculates daily statistics
  * @param {Array} entries - List of entry objects {time, type}
- * @param {number} targetMinutes - Daily goal in minutes
- * @param {number} tolerance - Tolerance in minutes
+ * @param {Array} targetSessions - List of session durations in minutes (e.g. [240, 240])
+ * @param {number} tolerance - Tolerance in minutes (fixed 10 if on, 0 if off, passed as value)
  * @returns {Object} { worked: number, balance: number, prediction: number|null, isOpen: boolean }
  */
-export const calculateDailyStats = (entries = [], targetMinutes = 0, tolerance = 0) => {
+export const calculateDailyStats = (entries = [], targetSessions = [], tolerance = 0) => {
     let worked = 0;
     let lastIn = null;
     let isOpen = false;
+    let completedSessions = 0;
+
+    // Ensure targetSessions is an array (handle legacy data)
+    const targets = Array.isArray(targetSessions) ? targetSessions : [targetSessions || 0];
+    const totalTarget = targets.reduce((a, b) => a + b, 0);
 
     // Sort by time
     const sorted = [...entries].sort((a, b) => T2M(a.time) - T2M(b.time));
 
     sorted.forEach(e => {
         const m = T2M(e.time);
-        // Match 'Entrada' (PT) or 'In' (EN)
-        if (e.type.match(/entrada|in/i)) {
+        if (e.type.match(/entrada|in|entrance/i)) {
             lastIn = m;
             isOpen = true;
-            // Match 'Saída' (PT), 'Saida', or 'Out' (EN)
-        } else if (e.type.match(/saída|saida|out/i) && isOpen) {
+        } else if (e.type.match(/saída|saida|out|exit/i) && isOpen) {
             worked += (m - lastIn);
             isOpen = false;
+            completedSessions++;
         }
     });
 
-    // If currently open (clocked in), add time until NOW
-    let currentSession = 0;
+    // If currently open, add time until NOW
+    let currentSessionWorked = 0;
     if (isOpen) {
         const now = new Date();
         const nowM = now.getHours() * 60 + now.getMinutes();
-        // Only add if "now" is ostensibly today (simple check)
-        // Ideally we check if the entry date is today, but for now we assume caller handles context
-        currentSession = Math.max(0, nowM - lastIn);
+        currentSessionWorked = Math.max(0, nowM - lastIn);
     }
 
-    const totalWorked = worked + currentSession;
-    const effectiveTarget = Math.max(0, targetMinutes - tolerance);
+    const totalWorked = worked + currentSessionWorked;
+    const effectiveTarget = Math.max(0, totalTarget - tolerance);
     const balance = totalWorked - effectiveTarget;
 
-    // Prediction: When can I leave to reach target?
-    // Target = (Past Sessions) + (Future Session)
-    // Target = worked + (ExitTime - lastIn)
-    // ExitTime = Target - worked + lastIn
+    // Prediction: Based on CURRENT session target
     let prediction = null;
-    if (isOpen && targetMinutes > 0) {
-        // We want to reach 'effectiveTarget' usually? Or full target? 
-        // Prototype used: net = goal - tolerance
-        // predictionTime = lastIn + (net - acc)
-        // acc = worked (closed sessions)
-        prediction = lastIn + (effectiveTarget - worked);
+    if (isOpen) {
+        // Current session index is 'completedSessions'
+        // If we have more sessions than defined targets, fallback to the last defined target or 0
+        const currentTarget = targets[completedSessions] || 0;
+
+        // Prediction = lastIn + currentTarget
+        // Note: Tolerance is usually applied to the FINAL balance, not per session. 
+        // User requested "tolerance is fixed 10 minutes". Usually this implies everyday tolerance.
+        // For prediction, we usually aim for the exact target of the session.
+        if (currentTarget > 0) {
+            prediction = lastIn + currentTarget;
+        }
     }
 
     return {

@@ -63,25 +63,64 @@ export const SettingsPage = () => {
             <Card className="space-y-6">
                 <div>
                     <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-2 tracking-widest">{t('tolerance')}</label>
-                    <input
-                        type="number"
-                        value={settings.tolerance}
-                        onChange={(e) => saveSetting('tolerance', parseInt(e.target.value) || 0)}
-                        className="w-full bg-white/10 p-4 rounded-2xl border-none text-xl font-medium outline-none"
-                    />
+                    <div className="flex items-center justify-between">
+                        <span className="text-sm opacity-70">10 Minutes Tolerance</span>
+                        <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={!!settings.tolerance}
+                                onChange={(e) => saveSetting('tolerance', e.target.checked ? 10 : 0)}
+                                className="sr-only peer"
+                            />
+                            <div className="w-11 h-6 bg-slate-300 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
+                        </label>
+                    </div>
                 </div>
                 <div>
                     <label className="text-xs font-bold text-[var(--primary)] uppercase block mb-4 tracking-widest">{t('journey')}</label>
-                    <div className="space-y-3">
-                        {WEEKDAYS.map((day, idx) => (
-                            <div key={idx} className="flex justify-between items-center p-3 bg-white/5 rounded-2xl">
-                                <span className="font-medium opacity-80 text-sm">{day}</span>
-                                <input
-                                    type="time"
-                                    value={M2T(settings.targets[idx])}
-                                    onChange={(e) => updateTarget(idx, e.target.value)}
-                                    className="bg-white/10 p-2 rounded-xl font-bold text-center w-24 border-none outline-none"
-                                />
+                    <div className="space-y-4">
+                        {WEEKDAYS.map((day, dayIdx) => (
+                            <div key={dayIdx} className="bg-white/5 rounded-2xl p-4 space-y-3">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-medium opacity-80 text-sm">{day}</span>
+                                    <button
+                                        onClick={() => {
+                                            const newTargets = [...settings.targets];
+                                            newTargets[dayIdx] = [...(newTargets[dayIdx] || []), 240]; // Add 4h default
+                                            saveSetting('targets', newTargets);
+                                        }}
+                                        className="text-xs bg-white/10 px-2 py-1 rounded-md hover:bg-white/20 transition-colors"
+                                    >
+                                        + Add Session
+                                    </button>
+                                </div>
+                                {(settings.targets[dayIdx] || []).map((duration, sessionIdx) => (
+                                    <div key={sessionIdx} className="flex items-center gap-2">
+                                        <input
+                                            type="time"
+                                            value={M2T(duration)}
+                                            onChange={(e) => {
+                                                const newTargets = [...settings.targets];
+                                                newTargets[dayIdx][sessionIdx] = T2M(e.target.value);
+                                                saveSetting('targets', newTargets);
+                                            }}
+                                            className="bg-white/10 p-2 rounded-xl font-bold text-center w-full border-none outline-none"
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                const newTargets = [...settings.targets];
+                                                newTargets[dayIdx] = newTargets[dayIdx].filter((_, i) => i !== sessionIdx);
+                                                saveSetting('targets', newTargets);
+                                            }}
+                                            className="p-2 text-red-400 hover:bg-red-400/10 rounded-full"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
+                                ))}
+                                {(!settings.targets[dayIdx] || settings.targets[dayIdx].length === 0) && (
+                                    <p className="text-xs opacity-30 italic text-center py-2">No work scheduled</p>
+                                )}
                             </div>
                         ))}
                     </div>
