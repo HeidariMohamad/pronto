@@ -1,0 +1,70 @@
+@import "tailwindcss";
+
+:root {
+  --primary: #0b57d0;
+  --primary-container: #d3e3fd;
+  --on-primary-container: #041e49;
+  --surface: #f8fafc;
+  --container: #eff3f8;
+  --on-container: #1f1f1f;
+}
+
+body.theme-olive {
+  --primary: #606c38;
+  --primary-container: #e9edc9;
+  --on-primary-container: #283618;
+  --surface: #fefae0;
+  --container: #f2f2e6;
+  --on-container: #1f1f1f;
+}
+
+body.theme-eastbay {
+  --primary: #415a77;
+  --primary-container: #1b263b;
+  --on-primary-container: #e0e1dd;
+  --surface: #1b263b;
+  --container: #2c3e50;
+  --on-container: #e0e1dd;
+}
+
+body {
+  font-family: 'Roboto', sans-serif;
+  background-color: var(--surface);
+  color: var(--on-container);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+/* Custom Component Classes bridging Tailwind and CSS Variables */
+.m3-card {
+  @apply rounded-[28px] p-5 shadow-sm;
+  background-color: var(--container);
+}
+
+.m3-fab {
+  @apply rounded-[16px] shadow-lg flex items-center justify-center transition-transform active:scale-95;
+  background-color: var(--primary-container);
+  color: var(--on-primary-container);
+}
+
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Loader Animation */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.8);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
