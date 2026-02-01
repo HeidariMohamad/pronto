@@ -62,6 +62,7 @@ const WeeklyScheduleEditor = ({ targets, onChange }) => {
     const calculateTotal = (dayShifts) => {
         if (!dayShifts) return 0;
         return dayShifts.reduce((acc, shift) => {
+            if (typeof shift === 'number') return acc + shift;
             if (shift && shift.start && shift.end) {
                 return acc + Math.max(0, T2M(shift.end) - T2M(shift.start));
             }
@@ -229,7 +230,7 @@ export const SettingsPage = () => {
                 </div>
 
                 <div className="flex items-center justify-between">
-                    <span className="text-sm">{t('tolerance')} (10 min)</span>
+                    <span className="text-sm">{t('tolerance')}</span>
                     <label className="relative inline-flex items-center cursor-pointer">
                         <input
                             type="checkbox"

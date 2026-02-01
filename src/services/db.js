@@ -35,7 +35,7 @@ export const DEFAULT_SETTINGS = {
     notify: false,
     // Sun=[], Mon-Fri=[8h], Sat=[]
     // 480 mins = 8 hours
-    targets: [[], [480], [480], [480], [480], [480], []]
+    targets: [[], [], [], [], [], [], []]
 };
 
 // Initialize settings if empty
