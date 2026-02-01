@@ -4,10 +4,11 @@ import { M2T, T2M } from '../services/stats';
 import { Card, Fab, Modal } from '../components/UI';
 import { ChevronLeft, ChevronRight, Fingerprint, Camera, Trash2, Edit2 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
+import { toLocalISOString } from '../services/db';
 
 export const HomePage = () => {
     const [activeDate, setActiveDate] = useState(new Date());
-    const { record, settings, stats, addEntry, updateEntry, deleteEntry, updateNote } = useDailyRecord(activeDate.toISOString().split('T')[0]);
+    const { record, settings, stats, addEntry, updateEntry, deleteEntry, updateNote } = useDailyRecord(toLocalISOString(activeDate));
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [entryToDelete, setEntryToDelete] = useState(null);
     const { t, lang } = useTranslation();
@@ -89,7 +90,7 @@ export const HomePage = () => {
                             type="date"
                             className="absolute opacity-0 inset-0 w-full h-full cursor-pointer"
                             onChange={handleDateChange}
-                            value={activeDate.toISOString().split('T')[0]}
+                            value={toLocalISOString(activeDate)}
                         />
                     </label>
                 </div>
@@ -123,7 +124,7 @@ export const HomePage = () => {
             <div className="flex justify-center py-4">
                 <Fab onClick={handleQuickStamp} className="px-8 py-4 h-auto rounded-2xl">
                     <Fingerprint className="w-6 h-6 mr-2" />
-                    <span className="text-lg font-medium tracking-wide">{t(nextAction)}</span>
+                    <span className="text-lg font-medium tracking-wide w-[100px] inline-block text-center">{t(nextAction)}</span>
                 </Fab>
             </div>
 
