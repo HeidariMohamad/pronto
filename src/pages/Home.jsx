@@ -135,7 +135,7 @@ export const HomePage = () => {
 
             {/* Timeline */}
             <div className="space-y-1.5">
-                {[...(record.entries || [])].sort((a, b) => (T2M(a.time) || 0) - (T2M(b.time) || 0)).map(entry => (
+                {(record.entries || []).map(entry => (
                     <Card key={entry.id} className="p-2 flex items-center justify-between">
                         <div className="flex items-center gap-2.5">
                             {entry.photo ? (
