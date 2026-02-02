@@ -83,8 +83,8 @@ export const HomePage = () => {
             {/* Date Nav */}
             <div className="flex items-center justify-between px-2">
                 <button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10"><ChevronLeft size={24} /></button>
-                <div className="text-center relative">
-                    <p className="text-[10px] font-bold text-[var(--primary)] uppercase tracking-widest">{WEEKDAYS[activeDate.getDay()]}</p>
+                <div className={`text-center relative ${stats.balance >= 0 ? 'text-green-500' : ''}`}>
+                    <p className={`text-[10px] font-bold uppercase tracking-widest ${stats.balance >= 0 ? 'text-green-500' : 'text-[var(--primary)]'}`}>{WEEKDAYS[activeDate.getDay()]}</p>
                     <label className="text-lg font-normal cursor-pointer flex items-center justify-center gap-2">
                         {activeDate.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { day: 'numeric', month: 'long' })}
                         <input
@@ -110,17 +110,16 @@ export const HomePage = () => {
             )}
 
             {/* Stats */}
-            {/* Stats */}
             <div className="grid grid-cols-3 gap-3">
-                <Card className="p-3">
+                <Card className="p-3 text-center flex flex-col items-center justify-center">
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('worked')}</p>
                     <p className="text-xl font-medium">{M2T(stats.worked)}</p>
                 </Card>
-                <Card className={`p-3 border ${stats.balance >= 0 ? 'border-green-500/30' : 'border-red-500/30'}`}>
+                <Card className={`p-3 border text-center flex flex-col items-center justify-center ${stats.balance >= 0 ? 'border-green-500/30' : 'border-red-500/30'}`}>
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('balance')}</p>
                     <p className="text-xl font-medium">{M2T(stats.balance)}</p>
                 </Card>
-                <Card className="p-3 bg-white/5 border border-white/5">
+                <Card className="p-3 bg-white/5 border border-white/5 text-center flex flex-col items-center justify-center">
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('journey')}</p>
                     <p className="text-xl font-medium">{M2T(stats.totalTarget || 0)}</p>
                 </Card>
@@ -135,19 +134,19 @@ export const HomePage = () => {
             </div>
 
             {/* Timeline */}
-            <div className="space-y-2">
+            <div className="space-y-1.5">
                 {[...(record.entries || [])].sort((a, b) => (T2M(a.time) || 0) - (T2M(b.time) || 0)).map(entry => (
-                    <Card key={entry.id} className="p-3 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
+                    <Card key={entry.id} className="p-2 flex items-center justify-between">
+                        <div className="flex items-center gap-2.5">
                             {entry.photo ? (
                                 <img
                                     src={entry.photo}
-                                    className="w-10 h-10 rounded-lg object-cover cursor-pointer"
+                                    className="w-8 h-8 rounded-lg object-cover cursor-pointer"
                                     onClick={() => setSelectedImage(entry.photo)}
                                 />
                             ) : (
-                                <label className="w-10 h-10 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center text-slate-400 border-2 border-dashed border-black/10 dark:border-white/20 cursor-pointer overflow-hidden relative">
-                                    <Camera size={16} />
+                                <label className="w-8 h-8 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center text-slate-400 border-2 border-dashed border-black/10 dark:border-white/20 cursor-pointer overflow-hidden relative">
+                                    <Camera size={14} />
                                     <input type="file" accept="image/*" className="hidden" capture="environment" onChange={(e) => handlePhoto(e, entry.id)} />
                                 </label>
                             )}
@@ -156,15 +155,20 @@ export const HomePage = () => {
                                     type="time"
                                     value={entry.time}
                                     onChange={(e) => updateEntry(entry.id, 'time', e.target.value)}
-                                    className="text-lg font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-28"
+                                    className="text-base font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-24"
                                 />
-                                <p className="text-[9px] font-bold opacity-40 uppercase tracking-widest">{entry.type}</p>
+                                <p className="text-[8px] font-bold opacity-40 uppercase tracking-widest leading-tight">{entry.type}</p>
                             </div>
                         </div>
-                        <button onClick={() => confirmDelete(entry.id)} className="p-2 text-red-500 opacity-60 hover:opacity-100"><Trash2 size={18} /></button>
+                        <button onClick={() => confirmDelete(entry.id)} className="p-1.5 text-red-500 opacity-60 hover:opacity-100"><Trash2 size={16} /></button>
                     </Card>
                 ))}
                 {record.entries?.length === 0 && <p className="text-center opacity-30 text-sm py-4">{t('no_records_today')}</p>}
+                {stats.isOpen && !toLocalISOString(activeDate).includes(toLocalISOString(new Date())) && (
+                    <p className="text-center text-yellow-500 text-xs font-bold py-2 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
+                        ⚠ {t('close_entry_warning') || 'Complete the entry to see stats'}
+                    </p>
+                )}
             </div>
 
             {/* Note */}

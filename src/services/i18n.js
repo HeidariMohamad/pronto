@@ -17,7 +17,7 @@ export const translations = {
         theme_title: 'Tema Visual',
         lang_title: 'Idioma',
         tolerance: 'Tolerância de 10 min',
-        journey: 'Jornada Diária (HH:MM)',
+        journey: 'Meta',
         save: 'Salvar Tudo',
         nav_home: 'Ponto',
         nav_settings: 'Ajustes',
@@ -28,7 +28,8 @@ export const translations = {
         entry: 'Entrada',
         exit: 'Saída',
         no_records_today: 'Nenhum registro hoje.',
-        add_shift: '+ Horário'
+        add_shift: '+ Horário',
+        close_entry_warning: 'Complete o registro para ver os cálculos'
     },
     en: {
         app_name: 'Pronto',
@@ -48,7 +49,7 @@ export const translations = {
         theme_title: 'Visual Theme',
         lang_title: 'Language',
         tolerance: '10 mins tolerance',
-        journey: 'Daily Target (HH:MM)',
+        journey: 'Target',
         save: 'Save All',
         nav_home: 'Home',
         nav_settings: 'Settings',
@@ -59,7 +60,8 @@ export const translations = {
         entry: 'Entrance',
         exit: 'Exit',
         no_records_today: 'No records today.',
-        add_shift: '+ Shift'
+        add_shift: '+ Shift',
+        close_entry_warning: 'Complete the entry to see stats'
     },
     fa: {
         app_name: 'Pronto',
@@ -79,7 +81,7 @@ export const translations = {
         theme_title: 'تم ظاهری',
         lang_title: 'زبان',
         tolerance: '۱۰ دقیقه تلورانس',
-        journey: 'هدف روزانه (ساعت:دقیقه)',
+        journey: 'هدف',
         save: 'ذخیره',
         nav_home: 'خانه',
         nav_settings: 'تنظیمات',
@@ -90,6 +92,7 @@ export const translations = {
         entry: 'ورود',
         exit: 'خروج',
         no_records_today: 'هیچ رکوردی برای امروز نیست.',
-        add_shift: '+ نوبت'
+        add_shift: '+ نوبت',
+        close_entry_warning: 'برای مشاهده محاسبات، رکورد را کامل کنید'
     }
 };
