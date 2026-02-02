@@ -270,7 +270,7 @@ export const SettingsPage = () => {
                         </div>
                     </a>
                 </div>
-                <p className="text-xs font-medium opacity-50 mt-2">v0.1.0 • Made with ☕ and 🍰</p>
+                <p className="text-sm font-medium opacity-80 mt-4">v0.1.0 • Made with ☕ and 🍰</p>
             </div>
         </div>
     );
