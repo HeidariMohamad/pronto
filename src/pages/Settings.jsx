@@ -265,7 +265,7 @@ export const SettingsPage = () => {
                         <p className="text-sm font-medium opacity-80 mb-3 bg-gradient-to-r from-yellow-200 to-orange-200 bg-clip-text text-transparent">
                             {t('github_star_text')}
                         </p>
-                        <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest opacity-50 group-hover:opacity-100 transition-opacity">
+                        <div className="flex items-center justify-center gap-2 text-sm font-bold opacity-90 group-hover:opacity-100 transition-opacity text-[var(--primary)] border border-[var(--primary)]/20 rounded-xl py-2 px-4 bg-[var(--primary)]/5">
                             <span>{t('github_button')}</span>
                         </div>
                     </a>
