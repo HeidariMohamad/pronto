@@ -98,8 +98,8 @@ export const translations = {
         no_records_today: 'هیچ رکوردی برای امروز نیست.',
         add_shift: '+ نوبت',
         close_entry_warning: 'برای مشاهده محاسبات، رکورد را کامل کنید',
-        github_star_text: 'از برنامه راضی هستید؟ لطفا ستاره بدهید! ⭐',
-        github_button: 'ستاره در گیت‌هاب'
+        github_star_text: 'از برنامه راضی هستید؟',
+        github_button: 'برای ستاره دادن در گیت‌هاب کلیک کنید!'
     },
     pt: {
         app_name: 'Pronto',
@@ -132,8 +132,8 @@ export const translations = {
         no_records_today: 'Nenhum registro hoje.',
         add_shift: '+ Horário',
         close_entry_warning: 'Complete o registro para ver os cálculos',
-        github_star_text: 'Gostou do app? Dê uma estrela, por favor! ⭐',
-        github_button: 'Estrela no GitHub'
+        github_star_text: 'Gostou do app?',
+        github_button: 'Clique para dar uma estrela no Github!'
     },
     en: {
         app_name: 'Pronto',
@@ -166,7 +166,7 @@ export const translations = {
         no_records_today: 'No records today.',
         add_shift: '+ Shift',
         close_entry_warning: 'Complete the entry to see stats',
-        github_star_text: 'Do you like our app? Give us a star please! ⭐',
-        github_button: 'Star on GitHub'
+        github_star_text: 'Do you like our app?',
+        github_button: 'Click to give us a star on Github please!'
     },
 };
