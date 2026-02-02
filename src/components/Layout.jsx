@@ -10,18 +10,18 @@ export const Layout = ({ children }) => {
         <div className="min-h-[100dvh] flex flex-col bg-[var(--surface)] text-[var(--on-container)] transition-colors duration-200">
 
             {/* Safe Area Top */}
-            <div className="safe-top bg-transparent sticky top-0 z-50">
-                <div className="px-6 py-6 flex justify-between items-center max-w-lg mx-auto">
+            <div className="safe-top fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl rounded-b-3xl border-b border-white/5 shadow-lg transition-all duration-300">
+                <div className="px-6 py-4 flex justify-between items-center max-w-lg mx-auto">
                     <div className="flex items-center gap-3">
-                        <Fingerprint className="w-7 h-7 text-[var(--primary)]" />
-                        <h1 className="text-2xl font-normal tracking-tight">{t('app_name')}</h1>
+                        <Fingerprint className="w-6 h-6 text-[var(--primary)]" />
+                        <h1 className="text-xl font-normal tracking-tight">{t('app_name')}</h1>
                     </div>
-                    <div id="sync-status" className="w-2 h-2 rounded-full bg-slate-300"></div>
+                    <div id="sync-status" className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
                 </div>
             </div>
 
             {/* Main Content */}
-            <main className="flex-1 p-4 max-w-lg mx-auto w-full space-y-4 pb-32 overflow-y-auto no-scrollbar">
+            <main className="flex-1 p-4 pt-24 max-w-lg mx-auto w-full space-y-4 pb-32 overflow-y-auto no-scrollbar">
                 {children}
             </main>
 

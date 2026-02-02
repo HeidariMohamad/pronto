@@ -251,6 +251,27 @@ export const SettingsPage = () => {
 
                 <SemesterList />
             </Card>
+
+            {/* GitHub Star Plea */}
+            <div className="pt-8 pb-4 text-center space-y-4">
+                <div className="inline-block p-[2px] rounded-2xl bg-gradient-to-r from-yellow-400/30 via-orange-500/30 to-purple-500/30">
+                    <a
+                        href="https://github.com/HeidariMohamad/pronto"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block bg-black/80 backdrop-blur-xl rounded-2xl p-6 hover:bg-black/60 transition-all group"
+                    >
+                        <p className="text-xl mb-1 transform group-hover:scale-110 transition-transform duration-300">⭐</p>
+                        <p className="text-sm font-medium opacity-80 mb-3 bg-gradient-to-r from-yellow-200 to-orange-200 bg-clip-text text-transparent">
+                            {t('github_star_text')}
+                        </p>
+                        <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest opacity-50 group-hover:opacity-100 transition-opacity">
+                            <span>{t('github_button')}</span>
+                        </div>
+                    </a>
+                </div>
+                <p className="text-[10px] opacity-20">v0.1.0 • Built with ❤️</p>
+            </div>
         </div>
     );
 };
