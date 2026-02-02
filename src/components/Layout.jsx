@@ -10,7 +10,7 @@ export const Layout = ({ children }) => {
         <div className="min-h-[100dvh] flex flex-col bg-[var(--surface)] text-[var(--on-container)] transition-colors duration-200">
 
             {/* Safe Area Top */}
-            <div className="safe-top fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl rounded-b-3xl border-b border-white/5 shadow-lg transition-all duration-300">
+            <div className="safe-top fixed top-0 left-0 right-0 z-50 bg-[#0d1520]/85 backdrop-blur-xl rounded-b-3xl border-b border-white/5 shadow-lg transition-all duration-300">
                 <div className="px-6 py-4 flex justify-between items-center max-w-lg mx-auto">
                     <div className="flex items-center gap-3">
                         <Fingerprint className="w-6 h-6 text-[var(--primary)]" />
