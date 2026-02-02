@@ -15,13 +15,20 @@ export function useDailyRecord(dateStr = getTodayISO()) {
         return semesters.find(s => dateStr >= s.startDate && dateStr <= s.endDate);
     }, [dateStr]);
 
+    // Fix date parsing for day of week to ensure it uses local components
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const localDate = new Date(y, m - 1, d);
+    const dayOfWeek = localDate.getDay();
+
     const activeTargets = semester ? semester.targets : (settings?.targets || []);
     const tolerance = settings?.tolerance ? 10 : 0;
+    const isToday = dateStr === getTodayISO();
 
     const stats = calculateDailyStats(
         record?.entries || [],
-        activeTargets[new Date(dateStr).getDay()] || [],
-        tolerance
+        activeTargets[dayOfWeek] || [],
+        tolerance,
+        isToday
     );
 
     const addEntry = async (time, type, photo = null) => {

@@ -19,9 +19,10 @@ export const M2T = (m) => {
  * @param {Array} entries - List of entry objects {time, type}
  * @param {Array} targetSessions - List of session durations in minutes (e.g. [240, 240])
  * @param {number} tolerance - Tolerance in minutes (fixed 10 if on, 0 if off, passed as value)
- * @returns {Object} { worked: number, balance: number, prediction: number|null, isOpen: boolean }
+ * @param {boolean} isToday - Whether the date is today (affects live session)
+ * @returns {Object} { worked: number, balance: number, prediction: number|null, isOpen: boolean, totalTarget: number }
  */
-export const calculateDailyStats = (entries = [], targetSessions = [], tolerance = 0) => {
+export const calculateDailyStats = (entries = [], targetSessions = [], tolerance = 0, isToday = false) => {
     let worked = 0;
     let lastIn = null;
     let isOpen = false;
@@ -54,9 +55,9 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
         }
     });
 
-    // If currently open, add time until NOW
+    // If currently open, add time until NOW *only if checking today*
     let currentSessionWorked = 0;
-    if (isOpen) {
+    if (isOpen && isToday) {
         const now = new Date();
         const nowM = now.getHours() * 60 + now.getMinutes();
         currentSessionWorked = Math.max(0, nowM - lastIn);
@@ -69,7 +70,12 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     // Prediction: Goal is to reach Total Daily Target (Zero Balance)
     // Formula: Prediction = LastIn + (TotalTarget - WorkedSoFar)
     let prediction = null;
-    if (isOpen) {
+    if (isOpen && isToday) {
+        // We predict based on FULL target (ignoring tolerance for exact time, or with? usually exact)
+        // If we want to reach exactly the target (0 balance):
+        // WorkedSoFar + FutureWork = TotalTarget
+        // FutureWork = TotalTarget - WorkedSoFar
+        // ExitTime = LastIn + FutureWork
         const remainingToGoal = Math.max(0, totalTarget - worked);
 
         if (remainingToGoal > 0) {
@@ -81,6 +87,7 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
         worked: totalWorked,
         balance,
         prediction, // in minutes
-        isOpen
+        isOpen,
+        totalTarget
     };
 };

@@ -119,6 +119,13 @@ export const HomePage = () => {
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('balance')}</p>
                     <p className="text-2xl font-medium">{M2T(stats.balance)}</p>
                 </Card>
+                <Card className="p-5 col-span-2 bg-white/5 border border-white/5">
+                    <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('journey')}</p>
+                    <div className="flex justify-between items-baseline">
+                        <p className="text-2xl font-medium">{M2T(stats.totalTarget || 0)}</p>
+                        <p className="text-xs opacity-50">{stats.totalTarget ? `${stats.totalTarget / 60}h` : ''}</p>
+                    </div>
+                </Card>
             </div>
 
             {/* FAB */}
