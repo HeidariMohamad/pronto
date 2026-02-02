@@ -8,28 +8,16 @@ import { Download, Upload } from 'lucide-react';
 
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
-    const [start, setStart] = useState(value?.start || '08:00');
-    const [end, setEnd] = useState(value?.end || '17:00');
-
-    useEffect(() => {
-        setStart(value?.start || '08:00');
-        setEnd(value?.end || '17:00');
-    }, [value]);
-
-    const handleBlur = () => {
-        if (start !== value?.start || end !== value?.end) {
-            onChange({ start, end });
-        }
-    };
+    // We update parent immediately to ensure totals are calculated in real-time
+    // Local state is still useful if we wanted to debounce, but for time inputs immediate is better for UX here.
 
     return (
         <div className="flex items-center gap-2">
             <div className="flex-1 bg-black/30 rounded-xl p-3 flex items-center justify-center">
                 <input
                     type="time"
-                    value={start}
-                    onChange={(e) => setStart(e.target.value)}
-                    onBlur={handleBlur}
+                    value={value?.start || '08:00'}
+                    onChange={(e) => onChange({ ...value, start: e.target.value })}
                     className="bg-transparent font-medium outline-none border-none text-center w-full appearance-none"
                 />
             </div>
@@ -37,9 +25,8 @@ const ShiftTimeInput = ({ value, onChange, onDelete }) => {
             <div className="flex-1 bg-black/30 rounded-xl p-3 flex items-center justify-center">
                 <input
                     type="time"
-                    value={end}
-                    onChange={(e) => setEnd(e.target.value)}
-                    onBlur={handleBlur}
+                    value={value?.end || '17:00'}
+                    onChange={(e) => onChange({ ...value, end: e.target.value })}
                     className="bg-transparent font-medium outline-none border-none text-center w-full appearance-none"
                 />
             </div>
@@ -110,7 +97,7 @@ const WeeklyScheduleEditor = ({ targets, onChange }) => {
                             }}
                             className="w-full py-2.5 bg-white/5 rounded-xl text-xs font-medium opacity-50 hover:opacity-100 hover:bg-white/10 transition-all"
                         >
-                            + Horário
+                            {t('add_shift')}
                         </button>
                     </div>
                 );

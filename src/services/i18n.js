@@ -27,7 +27,8 @@ export const translations = {
         delete: 'Excluir',
         entry: 'Entrada',
         exit: 'Saída',
-        no_records_today: 'Nenhum registro hoje.'
+        no_records_today: 'Nenhum registro hoje.',
+        add_shift: '+ Horário'
     },
     en: {
         app_name: 'Pronto',
@@ -57,7 +58,8 @@ export const translations = {
         delete: 'Delete',
         entry: 'Entrance',
         exit: 'Exit',
-        no_records_today: 'No records today.'
+        no_records_today: 'No records today.',
+        add_shift: '+ Shift'
     },
     fa: {
         app_name: 'Pronto',
@@ -87,6 +89,7 @@ export const translations = {
         delete: 'حذف',
         entry: 'ورود',
         exit: 'خروج',
-        no_records_today: 'هیچ رکوردی برای امروز نیست.'
+        no_records_today: 'هیچ رکوردی برای امروز نیست.',
+        add_shift: '+ نوبت'
     }
 };
