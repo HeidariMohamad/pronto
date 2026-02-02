@@ -99,7 +99,7 @@ export const translations = {
         add_shift: '+ نوبت',
         close_entry_warning: 'برای مشاهده محاسبات، رکورد را کامل کنید',
         github_star_text: 'از برنامه راضی هستید؟',
-        github_button: 'برای ستاره دادن در گیت‌هاب کلیک کنید!'
+        github_button: '!برای ستاره دادن در گیت‌هاب کلیک کنید'
     },
     pt: {
         app_name: 'Pronto',
