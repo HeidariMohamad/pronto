@@ -74,7 +74,7 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     // Prediction: Goal is to reach Total Daily Target (Zero Balance)
     // Formula: Prediction = LastIn + (TotalTarget - WorkedSoFar)
     let prediction = null;
-    if (isOpen && isToday) {
+    if (isOpen) {
         // We predict based on FULL target (ignoring tolerance for exact time, or with? usually exact)
         // If we want to reach exactly the target (0 balance):
         // WorkedSoFar + FutureWork = TotalTarget
