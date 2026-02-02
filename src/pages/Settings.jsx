@@ -13,29 +13,29 @@ const ShiftTimeInput = ({ value, onChange, onDelete }) => {
 
     return (
         <div className="flex items-center gap-2">
-            <div className="flex-1 bg-black/30 rounded-xl p-3 flex items-center justify-center">
+            <div className="flex-1 bg-black/30 rounded-lg p-2 flex items-center justify-center">
                 <input
                     type="time"
                     value={value?.start || '08:00'}
                     onChange={(e) => onChange({ ...value, start: e.target.value })}
-                    className="bg-transparent font-medium outline-none border-none text-center w-full appearance-none"
+                    className="bg-transparent text-sm font-medium outline-none border-none text-center w-full appearance-none"
                 />
             </div>
-            <span className="opacity-30 text-sm">-</span>
-            <div className="flex-1 bg-black/30 rounded-xl p-3 flex items-center justify-center">
+            <span className="opacity-30 text-xs">-</span>
+            <div className="flex-1 bg-black/30 rounded-lg p-2 flex items-center justify-center">
                 <input
                     type="time"
                     value={value?.end || '17:00'}
                     onChange={(e) => onChange({ ...value, end: e.target.value })}
-                    className="bg-transparent font-medium outline-none border-none text-center w-full appearance-none"
+                    className="bg-transparent text-sm font-medium outline-none border-none text-center w-full appearance-none"
                 />
             </div>
             <button
                 onClick={onDelete}
-                className="p-2 text-red-500/60 hover:text-red-500 text-lg"
+                className="p-1 text-red-500/60 hover:text-red-500"
                 title="Remove shift"
             >
-                ×
+                <div className="w-5 h-5 flex items-center justify-center bg-white/5 rounded-full text-xs">×</div>
             </button>
         </div>
     );
@@ -58,13 +58,13 @@ const WeeklyScheduleEditor = ({ targets, onChange }) => {
     };
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-3">
             {WEEKDAYS.map((day, dayIdx) => {
                 const dayShifts = targets[dayIdx] || [];
                 const totalMinutes = calculateTotal(dayShifts);
 
                 return (
-                    <div key={dayIdx} className="bg-white/5 rounded-2xl p-4 space-y-3 border border-white/5">
+                    <div key={dayIdx} className="bg-white/5 rounded-xl p-3 space-y-2 border border-white/5">
                         <div className="flex justify-between items-end">
                             <span className="font-bold opacity-70 text-xs uppercase tracking-widest">{day}</span>
                             <span className="font-medium text-[var(--primary)] text-sm">{M2T(totalMinutes)}h</span>

@@ -110,21 +110,19 @@ export const HomePage = () => {
             )}
 
             {/* Stats */}
-            <div className="grid grid-cols-2 gap-3">
-                <Card className="p-5">
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+                <Card className="p-3">
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('worked')}</p>
-                    <p className="text-2xl font-medium">{M2T(stats.worked)}</p>
+                    <p className="text-xl font-medium">{M2T(stats.worked)}</p>
                 </Card>
-                <Card className={`p-5 border ${stats.balance >= 0 ? 'border-green-500/30' : 'border-red-500/30'}`}>
+                <Card className={`p-3 border ${stats.balance >= 0 ? 'border-green-500/30' : 'border-red-500/30'}`}>
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('balance')}</p>
-                    <p className="text-2xl font-medium">{M2T(stats.balance)}</p>
+                    <p className="text-xl font-medium">{M2T(stats.balance)}</p>
                 </Card>
-                <Card className="p-5 col-span-2 bg-white/5 border border-white/5">
+                <Card className="p-3 bg-white/5 border border-white/5">
                     <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('journey')}</p>
-                    <div className="flex justify-between items-baseline">
-                        <p className="text-2xl font-medium">{M2T(stats.totalTarget || 0)}</p>
-                        <p className="text-xs opacity-50">{stats.totalTarget ? `${stats.totalTarget / 60}h` : ''}</p>
-                    </div>
+                    <p className="text-xl font-medium">{M2T(stats.totalTarget || 0)}</p>
                 </Card>
             </div>
 

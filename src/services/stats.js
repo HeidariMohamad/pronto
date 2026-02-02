@@ -49,7 +49,11 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
             lastIn = m;
             isOpen = true;
         } else if (e.type.match(/saída|saida|out|exit/i) && isOpen) {
-            worked += (m - lastIn);
+            let exitM = m;
+            if (exitM < lastIn) {
+                exitM += 1440; // Add 24 hours if crossed midnight
+            }
+            worked += (exitM - lastIn);
             isOpen = false;
             completedSessions++;
         }
