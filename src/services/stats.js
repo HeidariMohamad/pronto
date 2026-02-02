@@ -32,13 +32,24 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     const targets = Array.isArray(targetSessions) ? targetSessions : [targetSessions || 0];
 
     // Calculate total target from durations or time ranges
-    const totalTarget = targets.reduce((acc, sess) => {
+    let totalTarget = targets.reduce((acc, sess) => {
         if (typeof sess === 'number') return acc + sess;
         if (sess && sess.start && sess.end) {
             return acc + Math.max(0, T2M(sess.end) - T2M(sess.start));
         }
         return acc;
     }, 0);
+
+    // FIX: If totalTarget is 0 but it's a weekday and targets are empty (maybe misconfig or past day), fallback to 0.
+    // Actually, logic is better handled in useDailyRecord or db defaults.
+    // But if we want to force it?
+    // Let's assume if targets length is 0, it comes as 0.
+    // The previous code: `const targets = Array.isArray(targetSessions) ? targetSessions : [targetSessions || 0];`
+
+    // If targets is [0], totalTarget is 0. 
+    // This is correct if it's a weekend.
+    // We shouldn't force 8h here if not passed.
+
 
     // Sort by time
     const sorted = [...entries].sort((a, b) => T2M(a.time) - T2M(b.time));
@@ -71,8 +82,8 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     const effectiveTarget = Math.max(0, totalTarget - tolerance);
     const balance = totalWorked - effectiveTarget;
 
-    // Prediction: Goal is to reach Total Daily Target (Zero Balance)
-    // Formula: Prediction = LastIn + (TotalTarget - WorkedSoFar)
+    // Prediction: Prioritize the CURRENT shift duration (Floating Shift)
+    // Goal: Ensure the user works the full duration of the shift they are currently in.
     let prediction = null;
     if (isOpen) {
         let currentRemaining = Math.max(0, totalTarget - worked);
@@ -83,37 +94,22 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
             .sort((a, b) => T2M(a.start) - T2M(b.start));
 
         if (timeRanges.length > 0 && currentRemaining > 0) {
-            let simulatedNow = lastIn;
+            // New Strategy: Floating Shift
+            // Prioritize the DURATION of the current/next shift.
+            // If user enters late, they should leave late to complete the full session.
 
-            for (const shift of timeRanges) {
-                const shiftStart = T2M(shift.start);
-                const shiftEnd = T2M(shift.end);
+            // Find the first shift that ends AFTER the current clock-in
+            const matchedShift = timeRanges.find(s => T2M(s.end) > lastIn);
 
-                // If we already finished this shift's timeframe, skip it
-                if (simulatedNow >= shiftEnd) continue;
-
-                // If there's a gap before this shift starts, we "wait" until it starts
-                if (simulatedNow < shiftStart) {
-                    simulatedNow = shiftStart;
-                }
-
-                const capacity = shiftEnd - simulatedNow;
-                if (capacity >= currentRemaining) {
-                    prediction = simulatedNow + currentRemaining;
-                    currentRemaining = 0;
-                    break;
-                } else {
-                    currentRemaining -= capacity;
-                    simulatedNow = shiftEnd;
-                }
-            }
-
-            // If still remaining after all shifts, just add to the end
-            if (currentRemaining > 0) {
-                prediction = simulatedNow + currentRemaining;
+            if (matchedShift) {
+                const duration = Math.max(0, T2M(matchedShift.end) - T2M(matchedShift.start));
+                prediction = lastIn + duration;
+            } else {
+                // If we are past all configured shifts, just add the remaining target
+                prediction = lastIn + currentRemaining;
             }
         } else if (currentRemaining > 0) {
-            // Fallback for duration-only targets
+            // Fallback for duration-only targets (no specific start/end times)
             prediction = lastIn + currentRemaining;
         }
     }
@@ -126,4 +122,3 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
         totalTarget
     };
 };
-// comments
