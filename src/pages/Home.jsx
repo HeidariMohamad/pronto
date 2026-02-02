@@ -11,6 +11,7 @@ export const HomePage = () => {
     const { record, settings, stats, addEntry, updateEntry, deleteEntry, updateNote } = useDailyRecord(toLocalISOString(activeDate));
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [entryToDelete, setEntryToDelete] = useState(null);
+    const [selectedImage, setSelectedImage] = useState(null);
     const { t, lang } = useTranslation();
 
     const changeDate = (days) => {
@@ -134,7 +135,11 @@ export const HomePage = () => {
                     <Card key={entry.id} className="p-3 flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             {entry.photo ? (
-                                <img src={entry.photo} className="w-10 h-10 rounded-lg object-cover cursor-pointer" />
+                                <img
+                                    src={entry.photo}
+                                    className="w-10 h-10 rounded-lg object-cover cursor-pointer"
+                                    onClick={() => setSelectedImage(entry.photo)}
+                                />
                             ) : (
                                 <label className="w-10 h-10 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center text-slate-400 border-2 border-dashed border-black/10 dark:border-white/20 cursor-pointer overflow-hidden relative">
                                     <Camera size={16} />
@@ -177,6 +182,26 @@ export const HomePage = () => {
                     <button onClick={executeDelete} className="px-6 py-2 bg-red-500 text-white rounded-full font-medium">{t('delete')}</button>
                 </div>
             </Modal>
+
+            {/* Image Viewer Overlay */}
+            {selectedImage && (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm"
+                    onClick={() => setSelectedImage(null)}
+                >
+                    <img
+                        src={selectedImage}
+                        className="max-w-full max-h-full rounded-2xl shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <button
+                        onClick={() => setSelectedImage(null)}
+                        className="absolute top-4 right-4 bg-white/10 p-2 rounded-full text-white backdrop-blur-md"
+                    >
+                        ✕
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
