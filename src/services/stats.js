@@ -75,15 +75,46 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     // Formula: Prediction = LastIn + (TotalTarget - WorkedSoFar)
     let prediction = null;
     if (isOpen) {
-        // We predict based on FULL target (ignoring tolerance for exact time, or with? usually exact)
-        // If we want to reach exactly the target (0 balance):
-        // WorkedSoFar + FutureWork = TotalTarget
-        // FutureWork = TotalTarget - WorkedSoFar
-        // ExitTime = LastIn + FutureWork
-        const remainingToGoal = Math.max(0, totalTarget - worked);
+        let currentRemaining = Math.max(0, totalTarget - worked);
 
-        if (remainingToGoal > 0) {
-            prediction = lastIn + remainingToGoal;
+        // Find shifts that have start/end times
+        const timeRanges = targets
+            .filter(t => typeof t === 'object' && t.start && t.end)
+            .sort((a, b) => T2M(a.start) - T2M(b.start));
+
+        if (timeRanges.length > 0 && currentRemaining > 0) {
+            let simulatedNow = lastIn;
+
+            for (const shift of timeRanges) {
+                const shiftStart = T2M(shift.start);
+                const shiftEnd = T2M(shift.end);
+
+                // If we already finished this shift's timeframe, skip it
+                if (simulatedNow >= shiftEnd) continue;
+
+                // If there's a gap before this shift starts, we "wait" until it starts
+                if (simulatedNow < shiftStart) {
+                    simulatedNow = shiftStart;
+                }
+
+                const capacity = shiftEnd - simulatedNow;
+                if (capacity >= currentRemaining) {
+                    prediction = simulatedNow + currentRemaining;
+                    currentRemaining = 0;
+                    break;
+                } else {
+                    currentRemaining -= capacity;
+                    simulatedNow = shiftEnd;
+                }
+            }
+
+            // If still remaining after all shifts, just add to the end
+            if (currentRemaining > 0) {
+                prediction = simulatedNow + currentRemaining;
+            }
+        } else if (currentRemaining > 0) {
+            // Fallback for duration-only targets
+            prediction = lastIn + currentRemaining;
         }
     }
 
