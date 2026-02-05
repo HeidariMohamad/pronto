@@ -83,8 +83,9 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
             .sort((a, b) => T2M(a.start) - T2M(b.start));
 
         if (timeRanges.length > 0 && currentRemaining > 0) {
-            // Find shifts that start AFTER the current LastIn
-            const futureShifts = timeRanges.filter(s => T2M(s.start) > lastIn);
+            // Find shifts that start significantly AFTER the current LastIn
+            // If a shift starts within 120 mins (2 hours) of LastIn, we consider it the "current" shift we are starting early for.
+            const futureShifts = timeRanges.filter(s => T2M(s.start) > (lastIn + 120));
 
             // Calculate duration of these future shifts
             const futureShiftsDuration = futureShifts.reduce((acc, s) => {
