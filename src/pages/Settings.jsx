@@ -175,7 +175,7 @@ export const SettingsPage = () => {
                 semesters: await db.semesters.toArray(),
                 settings: await db.settings.get('v8')
             };
-            const latest = prepareMerge(device, cloud);
+            const latest = await prepareMerge(device, cloud);
             if (!sameSourceSnapshot(plan, latest, 'device') || !sameSourceSnapshot(plan, latest, 'cloud')) {
                 setMergeReview(null);
                 setBackupMsg('Data changed during review. Nothing was changed; start again to compare the latest versions.');
@@ -239,7 +239,7 @@ export const SettingsPage = () => {
                 semesters: await db.semesters.toArray(),
                 settings: await db.settings.get('v8')
             };
-            const plan = prepareMerge(device, cloud, backup);
+            const plan = await prepareMerge(device, cloud, backup);
             if (plan.conflicts.length) {
                 setBackupMsg('Review the differences before syncing.');
                 setMergeReview({ plan, index: 0, selections: {} });
@@ -325,7 +325,7 @@ export const SettingsPage = () => {
             {user && (
                 <Card className="space-y-4">
                     <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('account_cloud_storage')}</p>
-                    
+
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <img
@@ -436,11 +436,10 @@ export const SettingsPage = () => {
                         <div className="grid grid-cols-3 gap-2">
                             <button
                                 onClick={() => saveSetting('theme', 'liquid-glass')}
-                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                                    activeTheme === 'liquid-glass'
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'liquid-glass'
                                         ? 'bg-blue-600/30 text-white border-blue-400/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
                                         : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                }`}
+                                    }`}
                             >
                                 <Sparkles size={16} className="text-blue-400" />
                                 <span>Liquid Glass</span>
@@ -448,11 +447,10 @@ export const SettingsPage = () => {
 
                             <button
                                 onClick={() => saveSetting('theme', 'classic')}
-                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                                    activeTheme === 'classic'
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'classic'
                                         ? 'bg-slate-700/50 text-white border-slate-400/50 shadow-md'
                                         : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                }`}
+                                    }`}
                             >
                                 <Sliders size={16} className="text-slate-400" />
                                 <span>Classic Dark</span>
@@ -460,11 +458,10 @@ export const SettingsPage = () => {
 
                             <button
                                 onClick={() => saveSetting('theme', 'oled')}
-                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
-                                    activeTheme === 'oled'
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'oled'
                                         ? 'bg-black text-white border-white/40 shadow-md'
                                         : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                }`}
+                                    }`}
                             >
                                 <div className="w-4 h-4 rounded-full bg-black border border-white/40" />
                                 <span>OLED Black</span>
@@ -562,8 +559,8 @@ export const SettingsPage = () => {
                                         <span className="block text-xs text-slate-300">Remove this item from this device too.</span>
                                     ) : group.collection === 'records' ? (
                                         <span className="block text-xs text-slate-300 break-words">
-                                            {(option.value.entries || []).map(entry => `${entry.type || ''} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
-                                            <span className="flex flex-wrap gap-2 mt-2">{(option.value.entries || []).filter(entry => entry.photo).map((entry, photoIndex) => <img key={photoIndex} src={entry.photo} alt={`${entry.time || ''} photo`} className="w-12 h-12 object-cover rounded-lg" />)}</span>
+                                            {(option.value.entries || []).filter(Boolean).map(entry => `${entry.type || ''} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
+                                            <span className="flex flex-wrap gap-2 mt-2">{(option.value.entries || []).filter(entry => entry?.photo).map((entry, photoIndex) => <img key={photoIndex} src={entry.photo} alt={`${entry.time || ''} photo`} className="w-12 h-12 object-cover rounded-lg" />)}</span>
                                         </span>
                                     ) : group.collection === 'semesters' ? (
                                         <span className="block text-xs text-slate-300 break-words">{option.value.name || 'Schedule'} · {option.value.startDate} – {option.value.endDate}<br />Hours: {JSON.stringify(option.value.targets || [])}</span>

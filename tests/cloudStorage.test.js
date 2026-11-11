@@ -1,0 +1,119 @@
+import test, { after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import express from '../server/node_modules/express/index.js';
+
+process.env.DB_PATH = ':memory:';
+process.env.JWT_SECRET = 'cloud-storage-test-secret';
+const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pronto-storage-test-'));
+process.env.UPLOAD_DIR = uploadDir;
+const { db, upsertUser, upsertRecord, getRecords, getDeletedItems, addFileRecord, embeddedPhotoKey: serverPhotoKey } = await import('../server/db.js');
+const { embeddedPhotoKey: clientPhotoKey } = await import('../src/services/mergeData.js');
+const { generateToken, requireAuth } = await import('../server/routes/auth.js');
+const { default: storage, authorizeStoredUpload } = await import('../server/routes/storage.js');
+const { default: sync } = await import('../server/routes/sync.js');
+const app = express();
+app.use(express.json());
+app.use('/api/storage', storage);
+app.use('/api/sync', sync);
+app.use('/uploads', requireAuth, authorizeStoredUpload, express.static(uploadDir));
+const server = await new Promise(resolve => {
+  const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+});
+const base = `http://127.0.0.1:${server.address().port}`;
+after(async () => {
+  await new Promise(resolve => server.close(resolve));
+  db.close();
+  fs.rmSync(uploadDir, { recursive: true, force: true });
+});
+
+for (const id of ['user-a', 'user-b']) upsertUser({ id, google_id: id, email: `${id}@example.com`, name: id, avatar_url: null });
+const token = id => generateToken({ id, email: `${id}@example.com`, is_admin: 0 });
+async function request(id, route, body) {
+  const response = await fetch(`${base}${route}`, {
+    method: body ? 'POST' : 'GET',
+    headers: { ...(id ? { Authorization: `Bearer ${token(id)}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {})
+  });
+  return { status: response.status, data: await response.json() };
+}
+
+test('inventory, deletion and explicit restore stay scoped to the signed-in account', async () => {
+  const day = '2026-01-01';
+  const record = { date: day, entries: [{ type: 'In', time: '08:00' }], note: '', updatedAt: 10 };
+  upsertRecord('user-a', record);
+  upsertRecord('user-b', { ...record, note: 'other account' });
+  assert.equal((await request(null, '/api/storage')).status, 401);
+  assert.equal((await request('user-a', '/api/storage')).data.records[0].note, '');
+  assert.equal((await request('user-a', '/api/storage/delete', { collection: 'records', id: day, expectedUpdatedAt: 9 })).status, 409);
+  const deleted = await request('user-a', '/api/storage/delete', { collection: 'records', id: day, expectedUpdatedAt: 10 });
+  assert.equal(deleted.status, 200);
+  assert.equal(getRecords('user-a').length, 0);
+  assert.equal(getRecords('user-b')[0].note, 'other account');
+  assert.throws(() => upsertRecord('user-a', record), /deleted from the cloud/);
+  assert.equal((await request('user-a', '/api/sync/push', { records: [record] })).status, 409);
+  assert.equal((await request('user-a', '/api/storage/restore', { collection: 'records', id: day, deletedAt: deleted.data.deletedAt + 1, value: record })).status, 409);
+  assert.equal((await request('user-a', '/api/storage/restore', { collection: 'records', id: day, deletedAt: deleted.data.deletedAt, value: record })).status, 200);
+  assert.equal(getRecords('user-a').length, 1);
+  assert.equal(getDeletedItems('user-a').length, 0);
+});
+
+test('photo deletion cannot target another user and stale records cannot restore its URL', async () => {
+  const user = 'user-a';
+  const filename = 'photo.webp';
+  const url = `/uploads/${user}/${filename}`;
+  const dir = path.join(uploadDir, user);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, filename), 'example');
+  addFileRecord('file-a', user, filename, 'photo.webp', 7);
+  const record = { date: '2026-01-02', entries: [{ type: 'In', time: '08:00', photo: url }], note: '', updatedAt: 100 };
+  upsertRecord(user, record);
+  const photoRequest = async id => fetch(`${base}${url}`, { headers: id ? { Authorization: `Bearer ${token(id)}` } : {} });
+  assert.equal((await photoRequest(null)).status, 401);
+  assert.equal((await photoRequest('user-b')).status, 403);
+  const owned = await photoRequest(user);
+  assert.equal(owned.status, 200);
+  assert.match(owned.headers.get('cache-control'), /no-store/);
+  const nginxAuth = async id => fetch(`${base}/api/storage/authorize-upload`, { headers: { Authorization: `Bearer ${token(id)}`, 'X-Original-URI': url } });
+  assert.equal((await nginxAuth(user)).status, 204);
+  assert.equal((await nginxAuth('user-b')).status, 403);
+  assert.equal((await request('user-b', '/api/storage/delete', { collection: 'photos', id: 'file-a' })).status, 404);
+  assert.equal(fs.existsSync(path.join(dir, filename)), true);
+  const result = await request(user, '/api/storage/delete', { collection: 'photos', id: 'file-a' });
+  assert.equal(result.status, 200);
+  assert.equal(fs.existsSync(path.join(dir, filename)), false);
+  assert.equal((await photoRequest(user)).status, 403);
+  assert.equal(getRecords(user).find(r => r.date === record.date).entries[0].photo, null);
+  upsertRecord(user, { ...record, updatedAt: Date.now() + 10000 });
+  assert.equal(getRecords(user).find(r => r.date === record.date).entries[0].photo, null);
+});
+
+test('embedded backup photos can be viewed and deleted without deleting the day', async () => {
+  const user = 'user-a';
+  const record = { date: '2026-01-03', entries: [{ id: 'entry-1', type: 'In', time: '08:00', photo: 'data:image/png;base64,YWJj' }], note: 'keep this', updatedAt: 200 };
+  upsertRecord(user, record);
+  const inventory = await request(user, '/api/storage');
+  const photo = inventory.data.embeddedPhotos.find(item => item.date === record.date);
+  assert.ok(photo);
+  assert.equal(await clientPhotoKey(record.date, record.entries[0], 0), serverPhotoKey(record.date, record.entries[0], 0));
+  const preview = await fetch(`${base}${photo.url}`, { headers: { Authorization: `Bearer ${token(user)}` } });
+  assert.equal(preview.status, 200);
+  assert.equal(await preview.text(), 'abc');
+  assert.equal((await request('user-b', '/api/storage/delete', { collection: 'embeddedPhotos', id: photo.id, photoKey: photo.photoKey, expectedUpdatedAt: photo.updatedAt })).status, 404);
+  const result = await request(user, '/api/storage/delete', { collection: 'embeddedPhotos', id: photo.id, photoKey: photo.photoKey, expectedUpdatedAt: photo.updatedAt });
+  assert.equal(result.status, 200);
+  assert.equal(getRecords(user).find(item => item.date === record.date).note, 'keep this');
+  assert.equal(getRecords(user).find(item => item.date === record.date).entries[0].photo, null);
+  upsertRecord(user, { ...record, updatedAt: Date.now() + 10000 });
+  assert.equal(getRecords(user).find(item => item.date === record.date).entries[0].photo, null);
+  upsertRecord(user, { ...record, entries: [{ ...record.entries[0], photo: 'data:image/png;base64,ZGVm' }], updatedAt: Date.now() + 20000 });
+  assert.equal(getRecords(user).find(item => item.date === record.date).entries[0].photo, 'data:image/png;base64,ZGVm');
+});
+
+test('suspended accounts cannot access the storage manager', async () => {
+  db.prepare('UPDATE users SET is_banned = 1 WHERE id = ?').run('user-b');
+  assert.equal((await request('user-b', '/api/storage')).status, 403);
+  db.prepare('UPDATE users SET is_banned = 0 WHERE id = ?').run('user-b');
+});

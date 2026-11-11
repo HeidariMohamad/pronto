@@ -103,7 +103,7 @@ export const HomePage = () => {
 
     return (
         <div className="space-y-4 pb-28 animate-fade-in">
-
+            <div className="space-y-2.5">
             {/* Date Switcher */}
             <div className="home-date-switcher text-center space-y-0.5 pt-1">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">
@@ -139,7 +139,7 @@ export const HomePage = () => {
 
             {/* Top 3 Stat Cards */}
             <div className="grid grid-cols-3 gap-2.5">
-                <div className="theme-stat-pill p-3 text-center flex flex-col items-center justify-center">
+                <div className="theme-stat-pill p-2.5 text-center flex flex-col items-center justify-center">
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
                         {t('worked')}
                     </p>
@@ -148,7 +148,7 @@ export const HomePage = () => {
                     </p>
                 </div>
 
-                <div className={`theme-stat-pill p-3 text-center flex flex-col items-center justify-center border ${
+                <div className={`theme-stat-pill p-2.5 text-center flex flex-col items-center justify-center border ${
                     isPositiveBalance 
                         ? 'border-emerald-500/30 text-emerald-400' 
                         : 'border-red-500/30 text-red-400'
@@ -161,7 +161,7 @@ export const HomePage = () => {
                     </p>
                 </div>
 
-                <div className="theme-stat-pill p-3 text-center flex flex-col items-center justify-center">
+                <div className="theme-stat-pill p-2.5 text-center flex flex-col items-center justify-center">
                     <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
                         {t('journey')}
                     </p>
@@ -173,31 +173,32 @@ export const HomePage = () => {
 
             {/* Predicted Exit Time Card */}
             {stats.prediction && (
-                <div className="theme-card p-4 relative overflow-hidden bg-gradient-to-r from-blue-600/30 via-indigo-600/20 to-purple-600/20 border-blue-400/30 shadow-lg shadow-blue-500/10">
+                <div className="theme-card p-3 relative overflow-hidden bg-gradient-to-r from-blue-600/30 via-indigo-600/20 to-purple-600/20 border-blue-400/30 shadow-lg shadow-blue-500/10">
                     <div className="flex justify-between items-center relative z-10">
                         <div>
                             <div className="flex items-center gap-1.5 text-blue-300 text-xs font-semibold uppercase tracking-wider mb-0.5">
                                 <Sparkles size={13} />
                                 {t('prediction')}
                             </div>
-                            <h2 className="text-4xl font-light tracking-tight text-white">
+                            <h2 className="text-3xl font-light tracking-tight text-white">
                                 {M2T(stats.prediction)}
                             </h2>
                         </div>
-                        <Fingerprint className="w-16 h-16 text-blue-400/15" />
+                        <Fingerprint className="w-12 h-12 text-blue-400/15" />
                     </div>
                 </div>
             )}
 
             {/* Hero Stamp Action Button */}
-            <div className="flex justify-center py-2">
+            <div className="flex justify-center pt-1">
                 <button
                     onClick={handleQuickStamp}
-                    className="theme-action-btn w-full max-w-[280px] py-3.5 px-6 flex items-center justify-center gap-3 text-base shadow-xl"
+                    className="theme-action-btn w-full max-w-[280px] py-2.5 px-6 flex items-center justify-center gap-3 text-base shadow-xl"
                 >
                     <Fingerprint className="w-6 h-6 text-white" />
                     <span>{t(nextAction)}</span>
                 </button>
+            </div>
             </div>
 
             {/* Timeline: Grouped Sessions (Turnos) & Breaks (Intervalos) */}

@@ -4,6 +4,8 @@ import { api } from './api';
 let syncListeners = new Set();
 let currentStatus = 'idle'; // 'idle' | 'syncing' | 'offline' | 'error'
 let activeSync = null;
+let syncPauseCount = 0;
+const SYNC_PAUSED = Symbol('sync paused');
 const BATCH_BYTES = 8 * 1024 * 1024;
 
 // Keep requests small even when old records contain embedded photos.
@@ -69,9 +71,22 @@ export async function queueSync(table, id, action = 'upsert', data = null) {
 
 // Trigger synchronization of pending local changes
 export function triggerSync() {
+  if (syncPauseCount) return Promise.resolve({ paused: true });
   if (activeSync) return activeSync;
   activeSync = performSync().finally(() => { activeSync = null; });
   return activeSync;
+}
+
+// Stop at a batch boundary while the user reviews conflicting versions.
+export async function pauseSync() {
+  syncPauseCount++;
+  if (activeSync) {
+    try { await activeSync; } catch { /* Pending changes remain queued. */ }
+  }
+}
+
+export function resumeSync() {
+  syncPauseCount = Math.max(0, syncPauseCount - 1);
 }
 
 async function performSync() {
@@ -88,6 +103,7 @@ async function performSync() {
   try {
     let res;
     while (true) {
+      if (syncPauseCount) { setSyncStatus('idle'); return { paused: true }; }
       const pending = await db.pending_sync.toArray();
       if (!pending.length) break;
       const groups = new Map();
@@ -109,12 +125,14 @@ async function performSync() {
       await pushBatches(items, async (batch, result) => {
         res = result;
         await db.pending_sync.bulkDelete(batch.flatMap(item => item.ids));
+        if (syncPauseCount) throw SYNC_PAUSED;
       });
       if (missingIds.length) await db.pending_sync.bulkDelete(missingIds);
     }
     setSyncStatus('idle');
     return res;
   } catch (err) {
+    if (err === SYNC_PAUSED) { setSyncStatus('idle'); return { paused: true }; }
     console.error('Sync failed:', err);
     setSyncStatus('error');
     throw err;

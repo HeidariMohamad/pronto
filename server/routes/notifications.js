@@ -28,3 +28,4 @@ router.post('/:id/dismiss', requireAuth, (req, res) => {
 });
 
 export default router;
+

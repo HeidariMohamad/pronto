@@ -7,8 +7,25 @@ function content(collection, value) {
   return JSON.stringify(rest);
 }
 
-export function prepareMerge(device, cloud, backup = null) {
+export async function embeddedPhotoKey(date, entry, index) {
+  if (typeof entry?.photo !== 'string' || !entry.photo.startsWith('data:image/')) return null;
+  const identity = entry.id == null ? `index-${index}` : `id-${String(entry.id)}`;
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(entry.photo));
+  const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+  return `embedded:${JSON.stringify([date, identity, hash])}`;
+}
+
+export async function prepareMerge(device, cloud, backup = null) {
   const groups = new Map();
+  const deletedPhotos = new Set((cloud?.deletedItems || []).filter(item => item.collection === 'photos').map(item => item.id));
+  const embeddedIdentities = new Set();
+  for (const id of deletedPhotos) {
+    if (!id.startsWith('embedded:')) continue;
+    try {
+      const [date, identity] = JSON.parse(id.slice('embedded:'.length));
+      embeddedIdentities.add(JSON.stringify([date, identity]));
+    } catch { /* Ignore invalid legacy markers. */ }
+  }
   const add = (collection, key, value, source) => {
     if (key === undefined || key === null || key === '') throw new Error(`Invalid ${collection} item`);
     const groupKey = `${collection}:${key}`;
@@ -25,7 +42,19 @@ export function prepareMerge(device, cloud, backup = null) {
     if (!data) continue;
     for (const record of data.records || []) {
       if (!record || typeof record.date !== 'string' || !Array.isArray(record.entries || [])) throw new Error('Invalid backup record');
-      add('records', record.date, record, source);
+      const entries = [];
+      for (const [index, entry] of (record.entries || []).entries()) {
+        if (!entry || typeof entry !== 'object') { entries.push(entry); continue; }
+        const identity = entry.id == null ? `index-${index}` : `id-${String(entry.id)}`;
+        let removed = deletedPhotos.has(entry.photo);
+        if (!removed && embeddedIdentities.has(JSON.stringify([record.date, identity]))) {
+          const key = await embeddedPhotoKey(record.date, entry, index);
+          removed = key && deletedPhotos.has(key);
+        }
+        entries.push(removed ? { ...entry, photo: null } : entry);
+      }
+      const cleaned = { ...record, entries };
+      add('records', record.date, cleaned, source);
     }
     for (const semester of data.semesters || []) {
       if (!semester || semester.id === undefined || semester.id === null) throw new Error('Invalid backup semester');
@@ -35,11 +64,25 @@ export function prepareMerge(device, cloud, backup = null) {
     const settings = Array.isArray(data.settings) ? data.settings[0] : data.settings;
     if (settings) add('settings', 'v8', { ...settings, id: 'v8' }, source);
   }
+  for (const item of cloud?.deletedItems || []) {
+    if (!['records', 'semesters'].includes(item.collection)) continue;
+    const key = String(item.id);
+    const groupKey = `${item.collection}:${key}`;
+    if (!groups.has(groupKey)) groups.set(groupKey, { collection: item.collection, key, options: [], cloud: null });
+    const group = groups.get(groupKey);
+    const signature = `deleted:${item.deletedAt}`;
+    const value = { updatedAt: item.deletedAt, deletedAt: item.deletedAt };
+    group.cloud = { signature, value, deleted: true };
+    group.options.push({ signature, value, sources: ['cloud'], deleted: true });
+  }
   const all = [...groups.values()];
-  return { groups: all, conflicts: all.filter(group => group.options.length > 1) };
+  const photoTombstones = (cloud?.deletedItems || []).filter(item => item.collection === 'photos')
+    .map(item => [item.id, item.deletedAt]).sort((a, b) => a[0].localeCompare(b[0]));
+  return { groups: all, conflicts: all.filter(group => group.options.length > 1), photoTombstones };
 }
 
 export function sameSourceSnapshot(first, second, source) {
+  if (source === 'cloud' && JSON.stringify(first.photoTombstones || []) !== JSON.stringify(second.photoTombstones || [])) return false;
   const snapshot = plan => new Map(plan.groups.flatMap(group => {
     const option = group.options.find(candidate => candidate.sources.includes(source));
     const original = source === 'cloud' ? group.cloud?.value : option?.value;

@@ -17,7 +17,7 @@ import authRoutes, { requireAuth } from './routes/auth.js';
 import syncRoutes from './routes/sync.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
-import storageRoutes from './routes/storage.js';
+import storageRoutes, { authorizeStoredUpload } from './routes/storage.js';
 import notificationRoutes from './routes/notifications.js';
 
 const app = express();
@@ -41,7 +41,7 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
 // Serve uploaded photos directly
-app.use('/uploads', express.static(UPLOAD_ROOT));
+app.use('/uploads', requireAuth, authorizeStoredUpload, express.static(UPLOAD_ROOT));
 
 // Health check
 app.get('/api/health', (req, res) => {
