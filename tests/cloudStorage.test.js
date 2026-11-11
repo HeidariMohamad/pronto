@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import process from 'node:process';
 import express from '../server/node_modules/express/index.js';
+import cookieParser from '../server/node_modules/cookie-parser/index.js';
 
 process.env.DB_PATH = ':memory:';
 process.env.JWT_SECRET = 'cloud-storage-test-secret';
@@ -16,6 +18,7 @@ const { default: storage, authorizeStoredUpload } = await import('../server/rout
 const { default: sync } = await import('../server/routes/sync.js');
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use('/api/storage', storage);
 app.use('/api/sync', sync);
 app.use('/uploads', requireAuth, authorizeStoredUpload, express.static(uploadDir));
@@ -79,6 +82,8 @@ test('photo deletion cannot target another user and stale records cannot restore
   const nginxAuth = async id => fetch(`${base}/api/storage/authorize-upload`, { headers: { Authorization: `Bearer ${token(id)}`, 'X-Original-URI': url } });
   assert.equal((await nginxAuth(user)).status, 204);
   assert.equal((await nginxAuth('user-b')).status, 403);
+  assert.equal((await fetch(`${base}/api/storage/authorize-upload`, { headers: { Cookie: `pronto_session=${token(user)}`, 'X-Original-URI': url } })).status, 204);
+  assert.equal((await fetch(`${base}${url}`, { headers: { Authorization: `Bearer ${token('user-b')}`, 'X-Original-URI': '/uploads/user-b/other.webp' } })).status, 403);
   assert.equal((await request('user-b', '/api/storage/delete', { collection: 'photos', id: 'file-a' })).status, 404);
   assert.equal(fs.existsSync(path.join(dir, filename)), true);
   const result = await request(user, '/api/storage/delete', { collection: 'photos', id: 'file-a' });
@@ -116,4 +121,31 @@ test('suspended accounts cannot access the storage manager', async () => {
   db.prepare('UPDATE users SET is_banned = 1 WHERE id = ?').run('user-b');
   assert.equal((await request('user-b', '/api/storage')).status, 403);
   db.prepare('UPDATE users SET is_banned = 0 WHERE id = ?').run('user-b');
+});
+
+test('batch delete and mass cleanup endpoints work reliably', async () => {
+  const user = 'user-a';
+  // Insert sample records
+  upsertRecord(user, { date: '2026-03-01', entries: [{ type: 'In', time: '08:00', photo: 'data:image/png;base64,Zm9v' }], note: 'day 1', updatedAt: 10 });
+  upsertRecord(user, { date: '2026-03-02', entries: [{ type: 'In', time: '09:00', photo: 'data:image/png;base64,YmFy' }], note: 'day 2', updatedAt: 10 });
+  
+  // Test batch deleting selected records
+  const batchRes = await request(user, '/api/storage/delete-batch', {
+    items: [{ collection: 'records', id: '2026-03-01' }]
+  });
+  assert.equal(batchRes.status, 200);
+  assert.equal(getRecords(user).some(r => r.date === '2026-03-01'), false);
+  assert.equal(getRecords(user).some(r => r.date === '2026-03-02'), true);
+
+  // Test mass deleting all photos
+  const photoRes = await request(user, '/api/storage/delete-batch', { deleteAll: 'photos' });
+  assert.equal(photoRes.status, 200);
+  const remaining = getRecords(user).find(r => r.date === '2026-03-02');
+  assert.equal(remaining.entries[0].photo, null);
+  assert.equal(remaining.note, 'day 2'); // Hours & notes stay intact
+
+  // Test wiping all cloud data
+  const allRes = await request(user, '/api/storage/delete-batch', { deleteAll: 'all' });
+  assert.equal(allRes.status, 200);
+  assert.equal(getRecords(user).length, 0);
 });

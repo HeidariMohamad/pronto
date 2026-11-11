@@ -2,6 +2,8 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { randomUUID } from 'crypto';
+import { Buffer } from 'node:buffer';
+import process from 'node:process';
 import { fileURLToPath } from 'url';
 import { requireAuth } from './auth.js';
 import { db, getUserById, getRecords, getSemesters, getStorageUsage, deleteRecord, deleteSemester, markDeleted, restoreDeletedItem, runTransaction, embeddedPhotoKey } from '../db.js';
@@ -163,6 +165,178 @@ router.post('/delete', (req, res) => {
     }
     console.error('Cloud deletion failed:', err);
     res.status(500).json({ error: 'Could not delete the cloud item' });
+  }
+});
+
+// Batch Deletion & Mass Clean-up
+router.post('/delete-batch', (req, res) => {
+  const userId = req.user.id;
+  const { deleteAll, items = [] } = req.body || {};
+
+  try {
+    const root = path.resolve(process.env.UPLOAD_DIR || path.join(serverDir, 'uploads'));
+    const userUploadDir = path.resolve(root, userId);
+
+    if (deleteAll === 'all') {
+      runTransaction(() => {
+        // Mark all records deleted
+        const records = db.prepare('SELECT date FROM records WHERE user_id = ?').all(userId);
+        for (const r of records) {
+          markDeleted(userId, 'records', r.date);
+        }
+        db.prepare('DELETE FROM records WHERE user_id = ?').run(userId);
+
+        // Mark all semesters deleted
+        const semesters = db.prepare('SELECT id FROM semesters WHERE user_id = ?').all(userId);
+        for (const s of semesters) {
+          markDeleted(userId, 'semesters', s.id);
+        }
+        db.prepare('DELETE FROM semesters WHERE user_id = ?').run(userId);
+
+        // Delete all files
+        const files = db.prepare('SELECT filename FROM files WHERE user_id = ?').all(userId);
+        for (const f of files) {
+          markDeleted(userId, 'photos', `/uploads/${userId}/${f.filename}`);
+        }
+        db.prepare('DELETE FROM files WHERE user_id = ?').run(userId);
+      });
+
+      // Remove files from disk
+      if (fs.existsSync(userUploadDir)) {
+        try {
+          fs.rmSync(userUploadDir, { recursive: true, force: true });
+        } catch (e) {
+          console.warn('Could not remove user upload dir:', e);
+        }
+      }
+
+      return res.json({ success: true, deleteAll: 'all', storageUsage: getStorageUsage(userId) });
+    }
+
+    if (deleteAll === 'photos') {
+      const changedRecords = [];
+      runTransaction(() => {
+        // Strip photos from all records
+        const rows = db.prepare('SELECT date, entries, updated_at FROM records WHERE user_id = ?').all(userId);
+        const update = db.prepare('UPDATE records SET entries = ?, updated_at = ? WHERE user_id = ? AND date = ?');
+        for (const row of rows) {
+          const entries = JSON.parse(row.entries || '[]');
+          let hasPhoto = false;
+          const cleaned = entries.map(e => {
+            if (e?.photo) {
+              hasPhoto = true;
+              return { ...e, photo: null };
+            }
+            return e;
+          });
+          if (hasPhoto) {
+            const updatedAt = Math.max(Date.now(), Number(row.updated_at || 0) + 1);
+            update.run(JSON.stringify(cleaned), updatedAt, userId, row.date);
+            changedRecords.push({ date: row.date, updatedAt });
+          }
+        }
+
+        // Delete all files records
+        const files = db.prepare('SELECT filename FROM files WHERE user_id = ?').all(userId);
+        for (const f of files) {
+          markDeleted(userId, 'photos', `/uploads/${userId}/${f.filename}`);
+        }
+        db.prepare('DELETE FROM files WHERE user_id = ?').run(userId);
+      });
+
+      // Remove physical photo files
+      if (fs.existsSync(userUploadDir)) {
+        try {
+          fs.rmSync(userUploadDir, { recursive: true, force: true });
+        } catch (e) {
+          console.warn('Could not remove user upload dir:', e);
+        }
+      }
+
+      return res.json({ success: true, deleteAll: 'photos', changedRecords, storageUsage: getStorageUsage(userId) });
+    }
+
+    // Individual batch items
+    if (Array.isArray(items) && items.length > 0) {
+      const changedRecords = [];
+      const deletedRecords = [];
+      const deletedSemesters = [];
+      const deletedFiles = [];
+
+      runTransaction(() => {
+        for (const item of items) {
+          const { collection, id, photoKey } = item;
+          if (collection === 'records') {
+            markDeleted(userId, 'records', id);
+            deleteRecord(userId, id);
+            deletedRecords.push(id);
+          } else if (collection === 'semesters') {
+            markDeleted(userId, 'semesters', id);
+            deleteSemester(userId, id);
+            deletedSemesters.push(id);
+          } else if (collection === 'photos') {
+            const file = db.prepare('SELECT filename FROM files WHERE id = ? AND user_id = ?').get(id, userId);
+            if (file) {
+              const url = `/uploads/${userId}/${file.filename}`;
+              markDeleted(userId, 'photos', url);
+              db.prepare('DELETE FROM files WHERE id = ? AND user_id = ?').run(id, userId);
+              deletedFiles.push(file.filename);
+
+              // Strip from records
+              const rows = db.prepare('SELECT date, entries, updated_at FROM records WHERE user_id = ?').all(userId);
+              const update = db.prepare('UPDATE records SET entries = ?, updated_at = ? WHERE user_id = ? AND date = ?');
+              for (const row of rows) {
+                const entries = JSON.parse(row.entries || '[]');
+                if (entries.some(e => e?.photo === url)) {
+                  const updatedAt = Math.max(Date.now(), Number(row.updated_at || 0) + 1);
+                  update.run(JSON.stringify(entries.map(e => e?.photo === url ? { ...e, photo: null } : e)), updatedAt, userId, row.date);
+                  changedRecords.push({ date: row.date, updatedAt });
+                }
+              }
+            }
+          } else if (collection === 'embeddedPhotos' && photoKey) {
+            const match = /^(\d{4}-\d{2}-\d{2}):(\d+)$/.exec(id);
+            if (match) {
+              const date = match[1];
+              const index = Number(match[2]);
+              const row = db.prepare('SELECT entries, updated_at FROM records WHERE user_id = ? AND date = ?').get(userId, date);
+              if (row) {
+                const entries = JSON.parse(row.entries || '[]');
+                if (entries[index]) {
+                  markDeleted(userId, 'photos', photoKey);
+                  entries[index] = { ...entries[index], photo: null };
+                  const updatedAt = Math.max(Date.now(), Number(row.updated_at || 0) + 1);
+                  db.prepare('UPDATE records SET entries = ?, updated_at = ? WHERE user_id = ? AND date = ?').run(JSON.stringify(entries), updatedAt, userId, date);
+                  changedRecords.push({ date, updatedAt });
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Clean up deleted files from disk
+      for (const filename of deletedFiles) {
+        const filePath = path.resolve(userUploadDir, filename);
+        if (filePath.startsWith(userUploadDir + path.sep) && fs.existsSync(filePath)) {
+          try { fs.unlinkSync(filePath); } catch (e) {}
+        }
+      }
+
+      return res.json({ 
+        success: true, 
+        deletedCount: items.length, 
+        changedRecords, 
+        deletedRecords, 
+        deletedSemesters, 
+        storageUsage: getStorageUsage(userId) 
+      });
+    }
+
+    res.status(400).json({ error: 'No items or delete action specified' });
+  } catch (err) {
+    console.error('Batch delete failed:', err);
+    res.status(500).json({ error: 'Failed to perform batch deletion' });
   }
 });
 
