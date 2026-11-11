@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Card } from '../components/UI';
+import { useTranslation } from '../hooks/useTranslation';
 import { 
   Users, 
   HardDrive, 
@@ -36,6 +37,7 @@ function formatBytes(bytes, decimals = 1) {
 
 export const AdminPage = () => {
   const { user, isAdmin } = useAuth();
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -486,7 +488,7 @@ export const AdminPage = () => {
 
                 {/* Breakdown & Action Controls */}
                 <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px] text-slate-400">
-                  <span>DB: {formatBytes(u.dbBytes)} • Photos: {formatBytes(u.filesBytes)} ({u.filesCount || 0})</span>
+                  <span>DB: {formatBytes(u.dbBytes)} • {t('photos_label')}: {formatBytes(u.filesBytes)} ({u.filesCount || 0})</span>
 
                   <div className="flex items-center gap-1.5">
                     {/* Send Message to this user */}

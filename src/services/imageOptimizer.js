@@ -1,116 +1,67 @@
-/**
- * Client-side image optimizer for Pronto
- * Resizes and compresses photos before uploading to save storage & bandwidth.
- */
+const MAX_PHOTO_BYTES = 4.75 * 1024 * 1024;
 
-export async function optimizeImage(source, maxDimension = 800, quality = 0.65, cropSquare = true) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    let objectUrl = null;
-
-    img.onload = () => {
-      try {
-        let sx = 0;
-        let sy = 0;
-        let sWidth = img.width;
-        let sHeight = img.height;
-
-        // Crop to perfect 1:1 center square if enabled
-        if (cropSquare) {
-          const minDim = Math.min(img.width, img.height);
-          sx = Math.round((img.width - minDim) / 2);
-          sy = Math.round((img.height - minDim) / 2);
-          sWidth = minDim;
-          sHeight = minDim;
-        }
-
-        let targetWidth = sWidth;
-        let targetHeight = sHeight;
-
-        if (targetWidth > maxDimension || targetHeight > maxDimension) {
-          if (targetWidth >= targetHeight) {
-            targetHeight = Math.round((targetHeight * maxDimension) / targetWidth);
-            targetWidth = maxDimension;
-          } else {
-            targetWidth = Math.round((targetWidth * maxDimension) / targetHeight);
-            targetHeight = maxDimension;
-          }
-        }
-
-        const canvas = document.createElement('canvas');
-        canvas.width = targetWidth;
-        canvas.height = targetHeight;
-
-        const ctx = canvas.getContext('2d');
-        if (!ctx) {
-          throw new Error('Canvas 2D context not available');
-        }
-
-        // Draw image smoothly
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
-
-        // Try WebP first, fallback to JPEG
-        const tryExport = (type) => {
-          return new Promise((res) => {
-            canvas.toBlob(
-              (blob) => {
-                if (blob) {
-                  res({ blob, type });
-                } else if (type !== 'image/jpeg') {
-                  // Fallback to JPEG
-                  canvas.toBlob((jpegBlob) => res({ blob: jpegBlob, type: 'image/jpeg' }), 'image/jpeg', quality);
-                } else {
-                  res({ blob: null, type });
-                }
-              },
-              type,
-              quality
-            );
-          });
-        };
-
-        tryExport('image/webp').then(({ blob, type }) => {
-          if (objectUrl) URL.revokeObjectURL(objectUrl);
-
-          if (!blob) {
-            reject(new Error('Failed to compress image'));
-            return;
-          }
-
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            resolve({
-              blob,
-              dataUrl: reader.result,
-              sizeBytes: blob.size,
-              width,
-              height,
-              mimeType: type
-            });
-          };
-          reader.readAsDataURL(blob);
-        });
-      } catch (err) {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
-        reject(err);
-      }
-    };
-
-    img.onerror = (err) => {
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      reject(new Error('Failed to load image for optimization'));
-    };
-
-    if (typeof source === 'string') {
-      img.src = source;
-    } else if (source instanceof Blob || source instanceof File) {
-      objectUrl = URL.createObjectURL(source);
-      img.src = objectUrl;
-    } else {
-      reject(new Error('Invalid image source'));
-    }
-  });
+// Use the same centered square as object-fit: cover in the viewfinder.
+export function getImageCrop(width, height, maxDimension, cropSquare = true) {
+  const size = Math.min(width, height);
+  const sourceWidth = cropSquare ? size : width;
+  const sourceHeight = cropSquare ? size : height;
+  const scale = Math.min(1, maxDimension / Math.max(sourceWidth, sourceHeight));
+  return {
+    x: (width - sourceWidth) / 2,
+    y: (height - sourceHeight) / 2,
+    sourceWidth,
+    sourceHeight,
+    width: Math.max(1, Math.round(sourceWidth * scale)),
+    height: Math.max(1, Math.round(sourceHeight * scale))
+  };
 }
 
+// Encode once from the original. Only retry at a smaller size if the server's
+// per-photo upload limit would otherwise reject the image.
+export async function optimizeImage(source, maxDimension = 1600, quality = 0.88, cropSquare = true, options = {}) {
+  const objectUrl = typeof source === 'string' ? null : URL.createObjectURL(source);
+  try {
+    const image = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = objectUrl || source;
+    });
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!sourceWidth || !sourceHeight) throw new Error('Image has no dimensions');
+
+    const canvas = document.createElement('canvas');
+    let dimension = maxDimension;
+    let outputQuality = quality;
+    let blob;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const crop = getImageCrop(sourceWidth, sourceHeight, dimension, cropSquare);
+      canvas.width = crop.width;
+      canvas.height = crop.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas 2D context not available');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      if (options.brightness && options.brightness !== 1 && 'filter' in ctx) ctx.filter = `brightness(${options.brightness})`;
+      if (options.mirror) { ctx.translate(crop.width, 0); ctx.scale(-1, 1); }
+      ctx.drawImage(image, crop.x, crop.y, crop.sourceWidth, crop.sourceHeight, 0, 0, crop.width, crop.height);
+      blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(result => result ? resolve(result) : reject(new Error('Failed to encode image')), 'image/webp', outputQuality);
+      });
+      if (blob.size <= MAX_PHOTO_BYTES) break;
+      dimension = Math.round(dimension * 0.8);
+      outputQuality = Math.max(0.7, outputQuality - 0.05);
+    }
+    if (blob.size > MAX_PHOTO_BYTES) throw new Error('Photo is too large to upload');
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error('Failed to read the photo'));
+      reader.readAsDataURL(blob);
+    });
+    return { blob, dataUrl, sizeBytes: blob.size, width: canvas.width, height: canvas.height, mimeType: blob.type };
+  } finally {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}

@@ -14,8 +14,8 @@ import {
     X
 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
+import { formatPunchType } from '../services/i18n';
 import { toLocalISOString } from '../services/db';
-import { optimizeImage } from '../services/imageOptimizer';
 import { api } from '../services/api';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CameraCaptureModal } from '../components/CameraCaptureModal';
@@ -48,16 +48,16 @@ export const HomePage = () => {
         addEntry(time, type);
     };
 
-    const handleProcessAndSavePhoto = async (fileOrBlob, entryId) => {
-        if (!fileOrBlob || !entryId) return;
+    const handleProcessAndSavePhoto = async (photo, entryId) => {
+        if (!photo?.blob || !photo?.dataUrl || !entryId) return;
 
         try {
-            // 1:1 square crop guaranteed
-            const { blob, dataUrl } = await optimizeImage(fileOrBlob, 800, 0.65, true);
+            const { blob, dataUrl } = photo;
             await updateEntry(entryId, 'photo', dataUrl);
 
             if (navigator.onLine && localStorage.getItem('pronto_token')) {
-                const fileName = fileOrBlob.name || `punch_${entryId}.webp`;
+                const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/png' ? 'png' : 'webp';
+                const fileName = `punch_${entryId}.${extension}`;
                 const uploadRes = await api.uploadPhoto(blob, fileName);
                 if (uploadRes?.url) {
                     await updateEntry(entryId, 'photo', uploadRes.url);
@@ -269,14 +269,14 @@ export const HomePage = () => {
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setEditingTimePicker({ id: item.inEntry.id, time: item.inEntry.time, label: item.inEntry.type || t('entry') })}
+                                                    onClick={() => setEditingTimePicker({ id: item.inEntry.id, time: item.inEntry.time, label: formatPunchType(item.inEntry.type, lang, t('entry')) })}
                                                     className="text-base font-semibold text-white tracking-tight px-2 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 active:scale-95 transition-all cursor-pointer select-none"
                                                     title={t('select_time')}
                                                 >
                                                     {item.inEntry.time}
                                                 </button>
                                                 <span className="text-xs text-slate-400">
-                                                    · {item.inEntry.type || t('entry')}
+                                                    · {formatPunchType(item.inEntry.type, lang, t('entry'))}
                                                 </span>
                                             </div>
 
@@ -316,14 +316,14 @@ export const HomePage = () => {
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setEditingTimePicker({ id: item.outEntry.id, time: item.outEntry.time, label: item.outEntry.type || t('exit') })}
+                                                    onClick={() => setEditingTimePicker({ id: item.outEntry.id, time: item.outEntry.time, label: formatPunchType(item.outEntry.type, lang, t('exit')) })}
                                                     className="text-base font-semibold text-white tracking-tight px-2 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 active:scale-95 transition-all cursor-pointer select-none"
                                                     title={t('select_time')}
                                                 >
                                                     {item.outEntry.time}
                                                 </button>
                                                 <span className="text-xs text-slate-400">
-                                                    · {item.outEntry.type || t('exit')}
+                                                    · {formatPunchType(item.outEntry.type, lang, t('exit'))}
                                                 </span>
                                             </div>
 

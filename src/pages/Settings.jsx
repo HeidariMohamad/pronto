@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { triggerSync, queueSync } from '../services/sync';
 import { api } from '../services/api';
 import { prepareMerge, sameSourceSnapshot } from '../services/mergeData';
+import { formatPunchType } from '../services/i18n';
 import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
@@ -17,6 +18,7 @@ import { CloudStorage } from '../components/CloudStorage';
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
     const [pickerTarget, setPickerTarget] = useState(null); // 'start' | 'end' | null
+    const { t } = useTranslation();
 
     return (
         <div className="flex items-center gap-2">
@@ -39,7 +41,7 @@ const ShiftTimeInput = ({ value, onChange, onDelete }) => {
                 type="button"
                 onClick={onDelete}
                 className="p-1 text-red-500/60 hover:text-red-500"
-                title="Remove shift"
+                title={t('delete')}
             >
                 <div className="w-5 h-5 flex items-center justify-center bg-white/5 rounded-full text-xs">×</div>
             </button>
@@ -47,7 +49,7 @@ const ShiftTimeInput = ({ value, onChange, onDelete }) => {
             <IosTimePickerModal
                 isOpen={!!pickerTarget}
                 initialTime={pickerTarget === 'start' ? (value?.start || '08:00') : (value?.end || '17:00')}
-                title={pickerTarget === 'start' ? 'Início do Turno' : 'Fim do Turno'}
+                title={pickerTarget === 'start' ? t('shift_start') : t('shift_end')}
                 onConfirm={(newTime) => {
                     if (pickerTarget === 'start') {
                         onChange({ ...value, start: newTime });
@@ -157,7 +159,7 @@ function getConsistentRandomAvatar(identifier = '') {
 
 export const SettingsPage = () => {
     const settings = useLiveQuery(() => db.settings.get('v8'));
-    const { t } = useTranslation();
+    const { t, lang } = useTranslation();
     const { user, isAdmin, storageUsage, logout, refreshStorage } = useAuth();
     const navigate = useNavigate();
 
@@ -380,8 +382,8 @@ export const SettingsPage = () => {
                                 </div>
 
                                 <div className="flex justify-between text-[10px] opacity-60 pt-0.5">
-                                    <span>{storageUsage ? `Records: ${formatBytes(storageUsage.dbBytes || 0)} (${storageUsage.recordsCount || 0} days)` : 'Cloud storage unavailable'}</span>
-                                    {storageUsage && <span>Photos: {formatBytes(storageUsage.filesBytes || 0)} ({storageUsage.filesCount || 0})</span>}
+                                    <span>{storageUsage ? `${t('records_label')}: ${formatBytes(storageUsage.dbBytes || 0)} (${storageUsage.recordsCount || 0} ${t('days_label')})` : t('cloud_unavailable')}</span>
+                                    {storageUsage && <span>{t('photos_label')}: {formatBytes(storageUsage.filesBytes || 0)} ({storageUsage.filesCount || 0})</span>}
                                 </div>
                             </div>
                         );
@@ -519,11 +521,11 @@ export const SettingsPage = () => {
             {/* Semester Management */}
             <Card className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <p className="text-xs font-bold opacity-50 uppercase tracking-widest">Semesters</p>
+                    <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('semesters_title')}</p>
                     <button
                         onClick={async () => {
                             await db.semesters.add({
-                                name: 'New Semester',
+                                name: t('new_semester'),
                                 startDate: new Date().toISOString().split('T')[0],
                                 endDate: new Date().toISOString().split('T')[0],
                                 targets: [[], [], [], [], [], [], []]
@@ -531,7 +533,7 @@ export const SettingsPage = () => {
                         }}
                         className="text-xs bg-[var(--primary)] text-white px-3 py-1.5 rounded-lg font-bold"
                     >
-                        + Add
+                        {t('add_new')}
                     </button>
                 </div>
 
@@ -559,7 +561,7 @@ export const SettingsPage = () => {
                                         <span className="block text-xs text-slate-300">Remove this item from this device too.</span>
                                     ) : group.collection === 'records' ? (
                                         <span className="block text-xs text-slate-300 break-words">
-                                            {(option.value.entries || []).filter(Boolean).map(entry => `${entry.type || ''} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
+                                            {(option.value.entries || []).filter(Boolean).map(entry => `${formatPunchType(entry.type, lang)} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
                                             <span className="flex flex-wrap gap-2 mt-2">{(option.value.entries || []).filter(entry => entry?.photo).map((entry, photoIndex) => <img key={photoIndex} src={entry.photo} alt={`${entry.time || ''} photo`} className="w-12 h-12 object-cover rounded-lg" />)}</span>
                                         </span>
                                     ) : group.collection === 'semesters' ? (
@@ -602,8 +604,9 @@ export const SettingsPage = () => {
 const SemesterList = () => {
     const semesters = useLiveQuery(() => db.semesters.toArray());
     const [expandedId, setExpandedId] = useState(null);
+    const { t } = useTranslation();
 
-    if (!semesters?.length) return <div className="text-center opacity-30 text-sm py-4">No semesters defined</div>;
+    if (!semesters?.length) return <div className="text-center opacity-30 text-sm py-4">{t('no_semesters')}</div>;
 
     return (
         <div className="space-y-4">
@@ -625,7 +628,7 @@ const SemesterList = () => {
                             </p>
                         </div>
                         <div className="text-xs opacity-50">
-                            {expandedId === sem.id ? 'Close' : 'Edit'}
+                            {expandedId === sem.id ? t('close_label') : t('edit_label')}
                         </div>
                     </div>
 
@@ -633,7 +636,7 @@ const SemesterList = () => {
                         <div className="p-4 border-t border-white/10 bg-black/20 space-y-4">
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-[10px] opacity-50 uppercase tracking-widest block mb-1">Start</label>
+                                    <label className="text-[10px] opacity-50 uppercase tracking-widest block mb-1">{t('start_label')}</label>
                                     <input
                                         type="date"
                                         value={sem.startDate}
@@ -642,7 +645,7 @@ const SemesterList = () => {
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] opacity-50 uppercase tracking-widest block mb-1">End</label>
+                                    <label className="text-[10px] opacity-50 uppercase tracking-widest block mb-1">{t('end_label')}</label>
                                     <input
                                         type="date"
                                         value={sem.endDate}
@@ -659,11 +662,11 @@ const SemesterList = () => {
 
                             <button
                                 onClick={() => {
-                                    if (confirm('Delete semester?')) db.semesters.delete(sem.id);
+                                    if (confirm(t('delete_semester_confirm'))) db.semesters.delete(sem.id);
                                 }}
                                 className="w-full py-3 text-red-400 bg-red-400/10 rounded-xl text-sm font-bold mt-4"
                             >
-                                Delete Semester
+                                {t('delete_semester')}
                             </button>
                         </div>
                     )}

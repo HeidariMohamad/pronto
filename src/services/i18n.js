@@ -49,6 +49,20 @@ export const translations = {
         sync_completed: 'Sincronizado com sucesso!',
         sync_failed: 'Falha na sincronização',
         data_management: 'Gerenciamento de Dados',
+        records_label: 'Registros',
+        photos_label: 'Imagens',
+        days_label: 'dias',
+        cloud_unavailable: 'Armazenamento na nuvem indisponível',
+        semesters_title: 'Jornadas',
+        no_semesters: 'Nenhuma jornada cadastrada',
+        new_semester: 'Nova Jornada',
+        add_new: '+ Novo',
+        edit_label: 'Editar',
+        close_label: 'Fechar',
+        start_label: 'Início',
+        end_label: 'Fim',
+        delete_semester: 'Excluir jornada',
+        delete_semester_confirm: 'Excluir esta jornada?',
         backup: 'Backup',
         restore: 'Restaurar',
         preferences: 'Preferências',
@@ -106,6 +120,20 @@ export const translations = {
         sync_completed: 'Sync completed!',
         sync_failed: 'Sync failed',
         data_management: 'Data Management',
+        records_label: 'Records',
+        photos_label: 'Photos',
+        days_label: 'days',
+        cloud_unavailable: 'Cloud storage unavailable',
+        semesters_title: 'Semesters',
+        no_semesters: 'No semesters defined',
+        new_semester: 'New Semester',
+        add_new: '+ Add',
+        edit_label: 'Edit',
+        close_label: 'Close',
+        start_label: 'Start',
+        end_label: 'End',
+        delete_semester: 'Delete semester',
+        delete_semester_confirm: 'Delete semester?',
         backup: 'Backup',
         restore: 'Restore',
         preferences: 'Preferences',
@@ -163,6 +191,20 @@ export const translations = {
         sync_completed: 'همگام‌سازی با موفقیت انجام شد!',
         sync_failed: 'خطا در همگام‌سازی',
         data_management: 'مدیریت داده‌ها',
+        records_label: 'رکوردها',
+        photos_label: 'تصاویر',
+        days_label: 'روز',
+        cloud_unavailable: 'فضای ابری در دسترس نیست',
+        semesters_title: 'برنامه‌ها',
+        no_semesters: 'برنامه‌ای ثبت نشده است',
+        new_semester: 'برنامه جدید',
+        add_new: '+ جدید',
+        edit_label: 'ویرایش',
+        close_label: 'بستن',
+        start_label: 'شروع',
+        end_label: 'پایان',
+        delete_semester: 'حذف برنامه',
+        delete_semester_confirm: 'این برنامه حذف شود؟',
         backup: 'پشتیبان‌گیری',
         restore: 'بازیابی',
         preferences: 'تنظیمات برگزیده',
@@ -171,3 +213,13 @@ export const translations = {
         shift_end: 'پایان نوبت'
     }
 };
+
+// Punch types in older records may have been saved in a different language.
+export function formatPunchType(type, lang = 'en', fallback = '') {
+    if (typeof type !== 'string' || !type.trim()) return fallback;
+    const match = type.trim().match(/^(entrada|entrance|in|saída|saida|exit|out|ورود|خروج)(?=\s|\d|$)(.*)$/i);
+    if (!match) return type;
+    const kind = /^(entrada|entrance|in|ورود)$/i.test(match[1]) ? 'entry' : 'exit';
+    const labels = { pt: { entry: 'Entrada', exit: 'Saída' }, en: { entry: 'In', exit: 'Out' }, fa: { entry: 'ورود', exit: 'خروج' } };
+    return `${(labels[lang] || labels.en)[kind]}${match[2]}`;
+}

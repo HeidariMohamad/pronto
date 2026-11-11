@@ -3,7 +3,8 @@ function content(collection, value) {
   if (collection === 'records') {
     return JSON.stringify({ entries: value.entries || [], note: value.note || '' });
   }
-  const { updatedAt, ...rest } = value;
+  const rest = { ...value };
+  delete rest.updatedAt;
   return JSON.stringify(rest);
 }
 
