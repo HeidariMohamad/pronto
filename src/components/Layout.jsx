@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Fingerprint, Sliders } from 'lucide-react';
+import { Fingerprint, Sliders, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { subscribeSyncStatus } from '../services/sync';
+import { useAuth } from '../context/AuthContext';
 
 export const Layout = ({ children }) => {
     const { t } = useTranslation();
+    const { isAdmin } = useAuth();
     const [syncStatus, setSyncStatus] = useState('idle');
     const mainRef = useRef(null);
     const location = useLocation();
@@ -77,10 +79,14 @@ export const Layout = ({ children }) => {
 
             {/* Theme-Aware Bottom Navigation */}
             <nav className="theme-nav-container z-50 safe-bottom">
-                <div className={`theme-nav-bar flex justify-around items-center transition-all duration-300 ${location.pathname === '/settings' ? 'nav-on-settings' : 'nav-on-home'}`}>
+                <div
+                    className={`theme-nav-bar flex justify-around items-center transition-all duration-300 ${location.pathname === '/admin' && isAdmin ? 'nav-on-admin' : location.pathname === '/settings' ? 'nav-on-settings' : 'nav-on-home'}`}
+                    style={{ '--nav-count': isAdmin ? 3 : 2, '--nav-index': location.pathname === '/admin' && isAdmin ? 2 : location.pathname === '/settings' ? 1 : 0 }}
+                >
                     <span className="theme-nav-liquid" aria-hidden="true" />
                     <NavItem to="/" icon={<Fingerprint size={20} />} label={t('nav_home')} />
                     <NavItem to="/settings" icon={<Sliders size={20} />} label={t('settings_title')} />
+                    {isAdmin && <NavItem to="/admin" icon={<ShieldCheck size={20} />} label="Admin" />}
                 </div>
             </nav>
         </div>

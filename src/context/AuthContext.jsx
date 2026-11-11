@@ -54,12 +54,6 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const loginWithDevMock = async (mockData = {}) => {
-    const data = await api.post('/api/auth/google', { devMock: mockData });
-    await handleLoginSuccess(data);
-    return data;
-  };
-
   const logout = async () => {
     try {
       await api.post('/api/auth/logout');
@@ -118,7 +112,6 @@ export const AuthProvider = ({ children }) => {
     needsMigration,
     setNeedsMigration,
     loginWithGoogle,
-    loginWithDevMock,
     logout,
     refreshStorage
   };

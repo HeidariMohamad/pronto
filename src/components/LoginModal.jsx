@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
-import { Fingerprint, ShieldCheck, Sparkles, AlertCircle } from 'lucide-react';
+import { Fingerprint, ShieldCheck, AlertCircle } from 'lucide-react';
 
 export const LoginModal = () => {
-  const { loginWithGoogle, loginWithDevMock } = useAuth();
+  const { loginWithGoogle } = useAuth();
   const { t } = useTranslation();
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
   // Initialize Google Identity Services if client ID is set
   useEffect(() => {
@@ -19,13 +18,10 @@ export const LoginModal = () => {
         client_id: googleClientId,
         callback: async (response) => {
           try {
-            setLoading(true);
             setError('');
             await loginWithGoogle(response.credential);
           } catch (err) {
             setError(err.message || 'Failed to sign in with Google');
-          } finally {
-            setLoading(false);
           }
         }
       });
@@ -42,23 +38,6 @@ export const LoginModal = () => {
       }
     }
   }, [loginWithGoogle]);
-
-  const handleDevLogin = async (asAdmin = false) => {
-    try {
-      setLoading(true);
-      setError('');
-      await loginWithDevMock({
-        sub: asAdmin ? 'admin_test_1' : 'user_test_1',
-        email: asAdmin ? 'admin@pronto.local' : 'developer@pronto.local',
-        name: asAdmin ? 'Admin User' : 'Alex Developer',
-        picture: `https://api.dicebear.com/7.x/bottts/svg?seed=${asAdmin ? 'admin' : 'alex'}`
-      });
-    } catch (err) {
-      setError(err.message || 'Login failed');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
@@ -97,26 +76,6 @@ export const LoginModal = () => {
         {/* Google Sign-In Container */}
         <div className="space-y-3 pt-2">
           <div id="google-signin-btn" className="flex justify-center min-h-[44px]"></div>
-
-          {/* Quick Sign-In Options (Dev & Test) */}
-          <div className="pt-2 border-t border-white/5 space-y-2">
-            <button
-              onClick={() => handleDevLogin(false)}
-              disabled={loading}
-              className="w-full py-3 px-4 bg-white/10 hover:bg-white/15 active:scale-[0.99] text-white rounded-xl text-sm font-medium flex items-center justify-center gap-2 transition-all"
-            >
-              <Sparkles size={16} className="text-amber-400" />
-              {loading ? 'Signing in...' : 'Continue with Google / Quick Sign-in'}
-            </button>
-
-            <button
-              onClick={() => handleDevLogin(true)}
-              disabled={loading}
-              className="w-full py-2 text-xs text-slate-400 hover:text-white transition-colors"
-            >
-              Sign in as Admin (Demo)
-            </button>
-          </div>
         </div>
 
         <p className="text-[11px] text-slate-500">

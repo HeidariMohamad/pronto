@@ -60,43 +60,30 @@ export function requireAdmin(req, res, next) {
 // Google Sign-In verification
 router.post('/google', async (req, res) => {
   try {
-    const { credential, devMock } = req.body;
-
-    let googleUser = null;
-
-    if (devMock && (process.env.NODE_ENV !== 'production' || process.env.ALLOW_DEV_LOGIN === 'true')) {
-      // Local dev bypass for immediate testing
-      googleUser = {
-        sub: devMock.sub || 'dev_mock_123',
-        email: devMock.email || 'developer@pronto.local',
-        name: devMock.name || 'Pronto Developer',
-        picture: devMock.picture || 'https://api.dicebear.com/7.x/bottts/svg?seed=pronto'
-      };
-    } else {
-      if (!credential) {
-        return res.status(400).json({ error: 'Missing credential token' });
-      }
-
-      const googleClientId = getGoogleClientId();
-      if (!googleClientId) {
-        return res.status(500).json({ 
-          error: 'GOOGLE_CLIENT_ID is not configured on the server. Set GOOGLE_CLIENT_ID in server/.env' 
-        });
-      }
-
-      const client = new OAuth2Client(googleClientId);
-      const ticket = await client.verifyIdToken({
-        idToken: credential,
-        audience: googleClientId
-      });
-      const payload = ticket.getPayload();
-      googleUser = {
-        sub: payload.sub,
-        email: payload.email,
-        name: payload.name,
-        picture: payload.picture
-      };
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ error: 'Missing credential token' });
     }
+
+    const googleClientId = getGoogleClientId();
+    if (!googleClientId) {
+      return res.status(500).json({
+        error: 'GOOGLE_CLIENT_ID is not configured on the server. Set GOOGLE_CLIENT_ID in server/.env'
+      });
+    }
+
+    const client = new OAuth2Client(googleClientId);
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: googleClientId
+    });
+    const payload = ticket.getPayload();
+    const googleUser = {
+      sub: payload.sub,
+      email: payload.email,
+      name: payload.name,
+      picture: payload.picture
+    };
 
     const adminEmails = getAdminEmails();
     const isAdmin = adminEmails.includes(googleUser.email.toLowerCase()) ? 1 : 0;
