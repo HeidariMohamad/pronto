@@ -142,3 +142,4 @@ export const AccountSuspendedScreen = ({ user, onLogout, onCheckStatus }) => {
     </div>
   );
 };
+
