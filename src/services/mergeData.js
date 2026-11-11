@@ -18,6 +18,7 @@ export async function embeddedPhotoKey(date, entry, index) {
 
 export async function prepareMerge(device, cloud, backup = null) {
   const groups = new Map();
+  const aliases = new Map((cloud?.optimizedPhotos || []).map(item => [JSON.stringify([item.date, item.identity, item.hash]), item.url]));
   const deletedPhotos = new Set((cloud?.deletedItems || []).filter(item => item.collection === 'photos').map(item => item.id));
   const embeddedIdentities = new Set();
   for (const id of deletedPhotos) {
@@ -52,7 +53,14 @@ export async function prepareMerge(device, cloud, backup = null) {
           const key = await embeddedPhotoKey(record.date, entry, index);
           removed = key && deletedPhotos.has(key);
         }
-        entries.push(removed ? { ...entry, photo: null } : entry);
+        let photo = entry.photo;
+        if (!removed && typeof photo === 'string' && photo.startsWith('data:image/') && aliases.size) {
+          const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(photo));
+          const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+          photo = aliases.get(JSON.stringify([record.date, identity, hash])) || photo;
+          if (deletedPhotos.has(photo)) removed = true;
+        }
+        entries.push(removed ? { ...entry, photo: null } : photo !== entry.photo ? { ...entry, photo } : entry);
       }
       const cleaned = { ...record, entries };
       add('records', record.date, cleaned, source);

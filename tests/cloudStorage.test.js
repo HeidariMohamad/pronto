@@ -4,12 +4,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { createHash } from 'node:crypto';
 import express from '../server/node_modules/express/index.js';
 import cookieParser from '../server/node_modules/cookie-parser/index.js';
 
 process.env.DB_PATH = ':memory:';
 process.env.JWT_SECRET = 'cloud-storage-test-secret';
-const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pronto-storage-test-'));
+const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pronto-storage-test-'));
+const uploadDir = path.join(testRoot, 'uploads');
+fs.mkdirSync(uploadDir);
 process.env.UPLOAD_DIR = uploadDir;
 const { db, upsertUser, upsertRecord, upsertSettings, getSettings, getRecords, getDeletedItems, addFileRecord, embeddedPhotoKey: serverPhotoKey } = await import('../server/db.js');
 const { embeddedPhotoKey: clientPhotoKey } = await import('../src/services/mergeData.js');
@@ -31,7 +34,7 @@ const base = `http://127.0.0.1:${server.address().port}`;
 after(async () => {
   await new Promise(resolve => server.close(resolve));
   db.close();
-  fs.rmSync(uploadDir, { recursive: true, force: true });
+  fs.rmSync(testRoot, { recursive: true, force: true });
 });
 
 for (const id of ['user-a', 'user-b']) upsertUser({ id, google_id: id, email: `${id}@example.com`, name: id, avatar_url: null });
@@ -65,6 +68,62 @@ test('inventory, deletion and explicit restore stay scoped to the signed-in acco
   assert.equal((await request('user-a', '/api/storage/restore', { collection: 'records', id: day, deletedAt: deleted.data.deletedAt, value: record })).status, 200);
   assert.equal(getRecords('user-a').length, 1);
   assert.equal(getDeletedItems('user-a').length, 0);
+});
+
+test('admin optimization preserves originals and prevents old clients restoring large embedded photos', async () => {
+  const original = 'data:image/jpeg;base64,' + Buffer.alloc(1000, 42).toString('base64');
+  const webp = Buffer.from('5249464610000000574542505650382000000000', 'hex');
+  const dataUrl = `data:image/webp;base64,${webp.toString('base64')}`;
+  const record = { date: '2026-06-01', entries: [{ id: 'p1', time: '08:00', type: 'In', photo: original }], note: 'original', updatedAt: 10 };
+  upsertRecord('user-a', record);
+  const body = { kind: 'embedded', date: record.date, index: 0, expectedHash: createHash('sha256').update(original).digest('hex'), dataUrl };
+  const endpoint = '/api/admin/users/user-a/optimize-photo';
+  assert.equal((await request('user-b', endpoint, body)).status, 403);
+  assert.equal((await request('admin', endpoint, { ...body, expectedHash: '0'.repeat(64) })).status, 409);
+  const result = await request('admin', endpoint, body);
+  assert.equal(result.status, 200);
+  assert.equal(result.data.optimized, true);
+  const optimized = getRecords('user-a').find(item => item.date === record.date).entries[0].photo;
+  assert.ok(optimized.startsWith('/uploads/user-a/optimized_'));
+  assert.equal((await request('admin', endpoint, body)).status, 409);
+  const backups = fs.readdirSync(path.join(testRoot, 'photo-optimization-backups', 'user-a'));
+  const backupDir = path.join(testRoot, 'photo-optimization-backups', 'user-a');
+  assert.equal(fs.readFileSync(path.join(backupDir, backups.find(name => name.endsWith('.txt'))), 'utf8'), original);
+  const metadata = JSON.parse(fs.readFileSync(path.join(backupDir, backups.find(name => name.endsWith('.json'))), 'utf8'));
+  assert.equal(metadata.date, record.date);
+  const syncResult = await request('user-a', '/api/sync/push', { records: [{ ...record, note: 'edited on old phone', updatedAt: 20 }] });
+  assert.equal(syncResult.status, 200);
+  const after = getRecords('user-a').find(item => item.date === record.date);
+  assert.equal(after.note, 'edited on old phone');
+  assert.equal(after.entries[0].photo, optimized);
+  const pulled = await request('user-a', '/api/sync/pull');
+  assert.equal(pulled.data.optimizedPhotos[0].url, optimized);
+  // A new photo on the same entry must remain a real change, not be replaced by the alias.
+  const replacement = 'data:image/png;base64,bmV3';
+  const changed = { ...record, entries: [{ ...record.entries[0], photo: replacement }], updatedAt: 30 };
+  assert.equal((await request('user-a', '/api/sync/push', { records: [changed] })).status, 200);
+  assert.equal(getRecords('user-a').find(item => item.date === record.date).entries[0].photo, replacement);
+});
+
+test('admin optimization preserves uploaded file identity and its original bytes', async () => {
+  const dir = path.join(uploadDir, 'user-a');
+  fs.mkdirSync(dir, { recursive: true });
+  const original = Buffer.concat([Buffer.from('524946461000000057454250', 'hex'), Buffer.alloc(500, 42)]);
+  const smaller = Buffer.from('5249464610000000574542505650382000000000', 'hex');
+  fs.writeFileSync(path.join(dir, 'large.webp'), original);
+  addFileRecord('large-file', 'user-a', 'large.webp', 'large.webp', original.length);
+  const body = { kind: 'file', fileId: 'large-file', expectedHash: createHash('sha256').update(original).digest('hex'), dataUrl: `data:image/webp;base64,${smaller.toString('base64')}` };
+  const endpoint = '/api/admin/users/user-a/optimize-photo';
+  assert.equal((await request('user-b', endpoint, body)).status, 403);
+  assert.equal((await request('admin', '/api/admin/users/user-b/optimize-photo', body)).status, 404);
+  assert.equal((await request('admin', endpoint, body)).data.optimized, true);
+  assert.deepEqual(fs.readFileSync(path.join(dir, 'large.webp')), smaller);
+  assert.equal(db.prepare('SELECT size_bytes FROM files WHERE id = ?').get('large-file').size_bytes, smaller.length);
+  const backups = fs.readdirSync(path.join(testRoot, 'photo-optimization-backups', 'user-a'));
+  assert.ok(backups.filter(name => name.endsWith('.webp')).some(name => fs.readFileSync(path.join(testRoot, 'photo-optimization-backups', 'user-a', name)).equals(original)));
+  assert.equal((await request('admin', endpoint, body)).status, 409);
+  assert.equal((await request('user-a', '/api/storage/delete', { collection: 'photos', id: 'large-file' })).status, 200);
+  assert.equal(fs.readdirSync(path.join(testRoot, 'photo-optimization-backups', 'user-a')).some(name => name.endsWith('.webp')), false);
 });
 
 test('admin photo previews require admin access and match the selected user', async () => {
@@ -179,6 +238,7 @@ test('batch delete and mass cleanup endpoints work reliably', async () => {
   assert.equal(getRecords(user).length, 0);
   assert.equal(getSettings(user), null);
   assert.equal(allRes.data.storageUsage.totalBytes, 0);
+  assert.equal(fs.existsSync(path.join(testRoot, 'photo-optimization-backups', user)), false);
   assert.equal(getSettings('user-b').language, 'fa');
 });
 

@@ -11,6 +11,24 @@ import { db, getUserById, getRecords, getSemesters, getStorageUsage, deleteRecor
 const router = Router();
 const serverDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
+function removeOptimizationBackups(userId, filename = null) {
+  if (path.basename(userId) !== userId) throw new Error('Invalid user');
+  const root = path.resolve(process.env.UPLOAD_DIR || path.join(serverDir, 'uploads'));
+  const dir = path.join(path.dirname(root), 'photo-optimization-backups', userId);
+  if (!fs.existsSync(dir)) return;
+  if (!filename) { fs.rmSync(dir, { recursive: true, force: true }); return; }
+  const url = `/uploads/${userId}/${filename}`;
+  for (const name of fs.readdirSync(dir)) {
+    if (!/^[0-9a-f-]{36}\.json$/i.test(name)) continue;
+    const metadata = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+    if (metadata.filename !== filename && metadata.replacement !== url) continue;
+    const prefix = name.slice(0, -5);
+    for (const candidate of fs.readdirSync(dir)) {
+      if (candidate.startsWith(`${prefix}.`) && /^[0-9a-f-]{36}\.(?:json|txt|jpg|jpeg|png|webp)$/i.test(candidate)) fs.unlinkSync(path.join(dir, candidate));
+    }
+  }
+}
+
 function ownsUpload(userId, rawUrl) {
   try {
     const parts = new URL(rawUrl, 'http://localhost').pathname.split('/');
@@ -150,6 +168,7 @@ router.post('/delete', (req, res) => {
       if (movedFile) {
         try { fs.unlinkSync(movedFile); } catch (err) { cleanupPending = true; console.error('Could not remove quarantined photo:', err); }
       }
+      try { removeOptimizationBackups(userId, file.filename); } catch (err) { cleanupPending = true; console.error('Could not remove photo backups:', err); }
       return res.json({ success: true, url, changedRecords, cleanupPending, storageUsage: getStorageUsage(userId) });
     }
 
@@ -217,6 +236,7 @@ router.post('/delete-batch', (req, res) => {
         }
       }
 
+      removeOptimizationBackups(userId);
       return res.json({ success: true, deleteAll: 'all', storageUsage: getStorageUsage(userId) });
     }
 
@@ -260,6 +280,7 @@ router.post('/delete-batch', (req, res) => {
         }
       }
 
+      removeOptimizationBackups(userId);
       return res.json({ success: true, deleteAll: 'photos', changedRecords, storageUsage: getStorageUsage(userId) });
     }
 
@@ -328,6 +349,7 @@ router.post('/delete-batch', (req, res) => {
         if (filePath.startsWith(userUploadDir + path.sep) && fs.existsSync(filePath)) {
           try { fs.unlinkSync(filePath); } catch (e) {}
         }
+        removeOptimizationBackups(userId, filename);
       }
 
       return res.json({ 

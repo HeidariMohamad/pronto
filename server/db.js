@@ -82,6 +82,16 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS optimized_photo_aliases (
+    user_id TEXT NOT NULL,
+    record_date TEXT NOT NULL,
+    entry_identity TEXT NOT NULL,
+    original_hash TEXT NOT NULL,
+    replacement_url TEXT NOT NULL,
+    PRIMARY KEY (user_id, record_date, entry_identity, original_hash),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_records_user ON records(user_id);
   CREATE INDEX IF NOT EXISTS idx_semesters_user ON semesters(user_id);
   CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);
@@ -430,9 +440,17 @@ export function upsertRecord(userId, { date, entries, note, updatedAt }) {
   const inputEntries = typeof entries === 'string' ? JSON.parse(entries) : (entries || []);
   const removedPhotos = new Set(db.prepare("SELECT item_id FROM deleted_items WHERE user_id = ? AND collection = 'photos'").all(userId).map(row => row.item_id));
   const hasEmbeddedDeletions = [...removedPhotos].some(value => value.startsWith('embedded:'));
+  const lookupOptimized = db.prepare('SELECT replacement_url FROM optimized_photo_aliases WHERE user_id = ? AND record_date = ? AND entry_identity = ? AND original_hash = ?');
   const entriesStr = JSON.stringify(inputEntries.map((entry, index) => {
     const key = hasEmbeddedDeletions ? embeddedPhotoKey(date, entry, index) : null;
-    return removedPhotos.has(entry?.photo) || (key && removedPhotos.has(key)) ? { ...entry, photo: null } : entry;
+    if (removedPhotos.has(entry?.photo) || (key && removedPhotos.has(key))) return { ...entry, photo: null };
+    if (typeof entry?.photo === 'string' && entry.photo.startsWith('data:image/')) {
+      const hash = createHash('sha256').update(entry.photo, 'utf8').digest('hex');
+      const identity = entry.id == null ? `index-${index}` : `id-${String(entry.id)}`;
+      const replacement = lookupOptimized.get(userId, date, identity, hash)?.replacement_url;
+      if (replacement) return { ...entry, photo: removedPhotos.has(replacement) ? null : replacement };
+    }
+    return entry;
   }));
   const stmt = db.prepare(`
     INSERT INTO records (user_id, date, entries, note, updated_at)

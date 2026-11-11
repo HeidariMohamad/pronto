@@ -1,8 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { prepareMerge, sameSourceSnapshot, embeddedPhotoKey } from '../src/services/mergeData.js';
 
 const record = (date, time, updatedAt = 1) => ({ date, entries: [{ type: 'entry', time }], note: '', updatedAt });
+
+test('optimized photos reconcile old device records without masking other edits', async () => {
+  const photo = 'data:image/jpeg;base64,YWJj';
+  const url = '/uploads/user/optimized.webp';
+  const local = { date: '2026-01-01', entries: [{ id: '1', type: 'In', time: '08:00', photo }], note: '' };
+  const saved = { ...local, entries: [{ ...local.entries[0], photo: url }] };
+  const cloud = { records: [saved], optimizedPhotos: [{ date: local.date, identity: 'id-1', hash: createHash('sha256').update(photo).digest('hex'), url }] };
+  const plan = await prepareMerge({ records: [local] }, cloud);
+  assert.equal(plan.conflicts.length, 0);
+  assert.deepEqual(plan.groups[0].options[0].sources, ['device', 'cloud']);
+  const changed = await prepareMerge({ records: [{ ...local, note: 'new note' }] }, cloud);
+  assert.equal(changed.conflicts.length, 1);
+  const newPhoto = { ...local, entries: [{ ...local.entries[0], photo: 'data:image/jpeg;base64,ZGVm' }] };
+  assert.equal((await prepareMerge({ records: [newPhoto] }, cloud)).conflicts.length, 1);
+  const deletedCloud = { ...cloud, records: [{ ...saved, entries: [{ ...saved.entries[0], photo: null }] }], deletedItems: [{ collection: 'photos', id: url, deletedAt: 42 }] };
+  const deleted = await prepareMerge({ records: [local] }, deletedCloud);
+  assert.equal(deleted.conflicts.length, 0);
+  assert.equal(deleted.groups[0].options[0].value.entries[0].photo, null);
+});
 
 test('preserves unique records and asks about each conflicting day', async () => {
   const device = { records: [record('2026-01-01', '08:00'), record('2026-01-02', '08:00')] };

@@ -4,10 +4,13 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
+import { createHash, randomUUID } from 'node:crypto';
 import { requireAdmin } from './auth.js';
 import { 
   db,
+  runTransaction,
   getAllUsersStats, 
+  getStorageUsage,
   getUserDataForAdmin,
   getDefaultStorageLimitMb, 
   setDefaultStorageLimitMb, 
@@ -23,6 +26,83 @@ import {
 } from '../db.js';
 
 const router = Router();
+
+const photoHash = value => createHash('sha256').update(value).digest('hex');
+function optimizedImage(dataUrl) {
+  const match = /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl || '');
+  if (!match) return null;
+  const bytes = Buffer.from(match[2], 'base64');
+  if (!bytes.length || bytes.length > 200 * 1024) return null;
+  const valid = match[1] === 'image/jpeg' ? bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff : match[1] === 'image/png' ? bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex')) : bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP';
+  return valid ? { mime: match[1], bytes } : null;
+}
+
+router.post('/users/:id/optimize-photo', requireAdmin, (req, res) => {
+  const { kind, date, index, fileId, expectedHash, dataUrl } = req.body || {};
+  const userId = req.params.id;
+  const image = optimizedImage(dataUrl);
+  if (!getUserById(userId) || path.basename(userId) !== userId || !/^[a-f0-9]{64}$/.test(expectedHash || '') || !image) return res.status(400).json({ error: 'Invalid optimization request' });
+  const root = path.resolve(process.env.UPLOAD_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '../uploads'));
+  const backupDir = path.join(path.dirname(root), 'photo-optimization-backups', userId);
+  const userDir = path.join(root, userId);
+  const beforeBytes = getStorageUsage(userId).totalBytes;
+  let newFile = null;
+  try {
+    fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+    if (kind === 'embedded') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !Number.isSafeInteger(index) || index < 0 || image.mime !== 'image/webp') return res.sendStatus(400);
+      const row = db.prepare('SELECT entries FROM records WHERE user_id = ? AND date = ?').get(userId, date);
+      const entries = row && JSON.parse(row.entries || '[]');
+      const original = entries?.[index]?.photo;
+      if (typeof original !== 'string' || !original.startsWith('data:image/') || photoHash(original) !== expectedHash) return res.status(409).json({ error: 'Photo changed' });
+      if (dataUrl.length >= original.length) return res.json({ optimized: false });
+      const identity = entries[index].id == null ? `index-${index}` : `id-${String(entries[index].id)}`;
+      const backupId = randomUUID();
+      const backup = path.join(backupDir, `${backupId}.txt`);
+      fs.writeFileSync(backup, original, { flag: 'wx', mode: 0o600 });
+      fs.mkdirSync(userDir, { recursive: true });
+      const filename = `optimized_${randomUUID()}.webp`;
+      newFile = path.join(userDir, filename);
+      fs.writeFileSync(newFile, image.bytes, { flag: 'wx', mode: 0o600 });
+      const replacement = `/uploads/${userId}/${filename}`;
+      fs.writeFileSync(path.join(backupDir, `${backupId}.json`), JSON.stringify({ kind, userId, date, index, identity, originalHash: expectedHash, replacement, savedAt: new Date().toISOString() }), { flag: 'wx', mode: 0o600 });
+      entries[index] = { ...entries[index], photo: replacement };
+      runTransaction(() => {
+        db.prepare('INSERT INTO files (id,user_id,filename,original_name,size_bytes) VALUES (?,?,?,?,?)').run(`file_${randomUUID()}`, userId, filename, filename, image.bytes.length);
+        db.prepare('UPDATE records SET entries = ? WHERE user_id = ? AND date = ?').run(JSON.stringify(entries), userId, date);
+        db.prepare('INSERT OR REPLACE INTO optimized_photo_aliases (user_id,record_date,entry_identity,original_hash,replacement_url) VALUES (?,?,?,?,?)').run(userId, date, identity, expectedHash, replacement);
+      });
+      newFile = null;
+      return res.json({ optimized: true, savedBytes: beforeBytes - getStorageUsage(userId).totalBytes });
+    }
+    if (kind === 'file') {
+      const file = db.prepare('SELECT filename FROM files WHERE user_id = ? AND id = ?').get(userId, fileId);
+      if (!file || path.basename(file.filename) !== file.filename) return res.status(404).json({ error: 'Photo not found' });
+      const ext = path.extname(file.filename).toLowerCase();
+      if (!({ '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' })[ext] || ({ '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' })[ext] !== image.mime) return res.sendStatus(415);
+      const originalPath = path.join(userDir, file.filename);
+      const original = fs.readFileSync(originalPath);
+      if (photoHash(original) !== expectedHash) return res.status(409).json({ error: 'Photo changed' });
+      if (image.bytes.length >= original.length) return res.json({ optimized: false });
+      const backupId = randomUUID();
+      const backupPath = path.join(backupDir, `${backupId}${ext}`);
+      fs.writeFileSync(backupPath, original, { flag: 'wx', mode: 0o600 });
+      fs.writeFileSync(path.join(backupDir, `${backupId}.json`), JSON.stringify({ kind, userId, fileId, filename: file.filename, originalHash: expectedHash, savedAt: new Date().toISOString() }), { flag: 'wx', mode: 0o600 });
+      newFile = `${originalPath}.${randomUUID()}.tmp`;
+      fs.writeFileSync(newFile, image.bytes, { flag: 'wx', mode: 0o600 });
+      fs.renameSync(newFile, originalPath);
+      newFile = null;
+      try { db.prepare('UPDATE files SET size_bytes = ? WHERE user_id = ? AND id = ?').run(image.bytes.length, userId, fileId); }
+      catch (err) { fs.copyFileSync(backupPath, originalPath); throw err; }
+      return res.json({ optimized: true, savedBytes: beforeBytes - getStorageUsage(userId).totalBytes });
+    }
+    return res.sendStatus(400);
+  } catch (err) {
+    if (newFile) { try { fs.unlinkSync(newFile); } catch { /* Best effort. */ } }
+    console.error('Photo optimization failed:', err);
+    return res.status(500).json({ error: 'Photo optimization failed' });
+  }
+});
 
 router.get('/users/:id/photos/:fileId', requireAdmin, (req, res) => {
   const file = db.prepare('SELECT filename FROM files WHERE user_id = ? AND id = ?').get(req.params.id, req.params.fileId);

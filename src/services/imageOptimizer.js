@@ -55,7 +55,7 @@ export async function optimizeImage(source, maxDimension = 1024, quality = 0.75,
       if (options.mirror) { ctx.translate(crop.width, 0); ctx.scale(-1, 1); }
       ctx.drawImage(image, crop.x, crop.y, crop.sourceWidth, crop.sourceHeight, 0, 0, crop.width, crop.height);
       blob = await new Promise((resolve, reject) => {
-        canvas.toBlob(result => result ? resolve(result) : reject(new Error('Failed to encode image')), 'image/webp', outputQuality);
+        canvas.toBlob(result => result ? resolve(result) : reject(new Error('Failed to encode image')), options.mimeType || 'image/webp', outputQuality);
       });
       if (blob.size <= MAX_PHOTO_BYTES) break;
       dimension = Math.round(dimension * 0.8);

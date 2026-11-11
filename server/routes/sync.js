@@ -10,6 +10,7 @@ import {
   upsertSettings,
   getStorageUsage,
   getDeletedItems,
+  db,
   runTransaction
 } from '../db.js';
 
@@ -42,6 +43,7 @@ router.get('/pull', requireAuth, (req, res) => {
       semesters,
       settings,
       deletedItems: getDeletedItems(userId),
+      optimizedPhotos: db.prepare('SELECT record_date AS date, entry_identity AS identity, original_hash AS hash, replacement_url AS url FROM optimized_photo_aliases WHERE user_id = ?').all(userId),
       storageUsage
     });
   } catch (err) {

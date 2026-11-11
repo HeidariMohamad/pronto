@@ -4,6 +4,7 @@ import { db } from '../services/db';
 import { api } from '../services/api';
 import { subscribeSyncStatus } from '../services/sync';
 import { useTranslation } from '../hooks/useTranslation';
+import { prepareMerge } from '../services/mergeData';
 
 export function CloudBackupSummary({ usage }) {
   const { t } = useTranslation();
@@ -22,6 +23,7 @@ export function DeviceBackupStatus({ usage }) {
   const { t } = useTranslation();
   const [cloud, setCloud] = useState(null);
   const [unavailable, setUnavailable] = useState(false);
+  const [matching, setMatching] = useState(null);
   const records = useLiveQuery(() => db.records.toArray());
   useEffect(() => {
     let active = true;
@@ -34,7 +36,14 @@ export function DeviceBackupStatus({ usage }) {
     const unsubscribe = subscribeSyncStatus(status => { if (status === 'idle' || status === 'error') refresh(); });
     return () => { active = false; unsubscribe(); };
   }, []);
-  const matching = records && cloud ? records.filter(record => (cloud.records || []).some(saved => saved.date === record.date && JSON.stringify(saved.entries || []) === JSON.stringify(record.entries || []) && (saved.note || '') === (record.note || ''))).length : null;
+  useEffect(() => {
+    if (!records || !cloud) return undefined;
+    let active = true;
+    prepareMerge({ records }, cloud).then(plan => {
+      if (active) setMatching(plan.groups.filter(group => group.collection === 'records' && group.options.some(option => option.sources.includes('device') && option.sources.includes('cloud'))).length);
+    }).catch(() => { if (active) setUnavailable(true); });
+    return () => { active = false; };
+  }, [records, cloud]);
   return <div className="space-y-2">
     <CloudBackupSummary usage={usage} />
     <p className="text-xs text-slate-300" role="status">{unavailable ? t('Backup status could not be verified. Connect and retry syncing.') : matching === null ? t('Checking backup status…') : t('{saved} of {total} device record days match the cloud. {pending} need backup or have changes.', { saved: matching, total: records.length, pending: records.length - matching })}</p>
