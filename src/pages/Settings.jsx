@@ -12,6 +12,7 @@ import { api } from '../services/api';
 import { prepareMerge, sameSourceSnapshot } from '../services/mergeData';
 import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
+import { CloudStorage } from '../components/CloudStorage';
 
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
@@ -180,13 +181,31 @@ export const SettingsPage = () => {
                 setBackupMsg('Data changed during review. Nothing was changed; start again to compare the latest versions.');
                 return;
             }
+            const restored = new Map();
+            for (const group of plan.groups) {
+                const selected = selections[`${group.collection}:${group.key}`] || group.options[0];
+                if (group.cloud?.deleted && !selected.deleted) {
+                    const result = await api.post('/api/storage/restore', {
+                        collection: group.collection, id: String(group.key), deletedAt: group.cloud.value.deletedAt, value: selected.value
+                    });
+                    restored.set(`${group.collection}:${group.key}`, result.updatedAt);
+                }
+            }
             const now = Date.now();
             await db.transaction('rw', db.records, db.settings, db.semesters, db.pending_sync, async () => {
                 const pending = [];
                 for (const group of plan.groups) {
                     const selected = selections[`${group.collection}:${group.key}`] || group.options[0];
-                    const needsUpload = !group.cloud || group.cloud.signature !== selected.signature;
-                    const updatedAt = needsUpload ? Math.max(now, Number(group.cloud?.value.updatedAt || 0) + 1) : Math.max(Number(selected.value.updatedAt || 0), Number(group.cloud?.value.updatedAt || 0));
+                    if (selected.deleted) {
+                        const key = group.collection === 'semesters' && /^\d+$/.test(String(group.key)) ? Number(group.key) : group.key;
+                        await db[group.collection].delete(key);
+                        if (group.collection === 'semesters' && typeof key === 'number') await db.semesters.delete(String(key));
+                        await db.pending_sync.where('collection').equals(group.collection).filter(item => item.docId === String(group.key)).delete();
+                        continue;
+                    }
+                    const restoredAt = restored.get(`${group.collection}:${group.key}`);
+                    const needsUpload = !restoredAt && (!group.cloud || group.cloud.signature !== selected.signature);
+                    const updatedAt = restoredAt || (needsUpload ? Math.max(now, Number(group.cloud?.value.updatedAt || 0) + 1) : Math.max(Number(selected.value.updatedAt || 0), Number(group.cloud?.value.updatedAt || 0)));
                     const value = { ...selected.value, ...(updatedAt ? { updatedAt } : {}) };
                     await db[group.collection].put(value);
                     if (needsUpload) pending.push({ collection: group.collection, docId: String(group.key), action: 'upsert', timestamp: now });
@@ -310,12 +329,13 @@ export const SettingsPage = () => {
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <img
-                                src={getConsistentRandomAvatar(user.email || user.id)}
+                                src={user.avatar_url || user.picture || getConsistentRandomAvatar(user.email || user.id)}
+                                referrerPolicy="no-referrer"
                                 onError={(e) => {
                                     e.currentTarget.onerror = null;
-                                    e.currentTarget.src = '/avatar-robot.png';
+                                    e.currentTarget.src = getConsistentRandomAvatar(user.email || user.id);
                                 }}
-                                alt={user.name}
+                                alt={user.name || 'User'}
                                 className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-500/25 to-blue-500/25 border border-white/20 p-0.5 object-cover shadow-lg"
                             />
                             <div>
@@ -388,6 +408,7 @@ export const SettingsPage = () => {
                         )}
                     </div>
                     {backupMsg && <p role="status" aria-live="polite" className="text-xs text-slate-200">{backupMsg}</p>}
+                    <CloudStorage />
                 </Card>
             )}
 
@@ -532,11 +553,14 @@ export const SettingsPage = () => {
                                     {group.collection === 'records' ? `Choose the record for ${group.key}` : group.collection === 'semesters' ? 'Choose the schedule to keep' : 'Choose the settings to keep'}
                                 </h3>
                                 <p className="text-xs text-slate-300 mt-2">Select the version you want to keep. Nothing changes until all differences are reviewed.</p>
+                                {group.cloud?.deleted && <p className="text-xs text-amber-300 mt-2">This item was deleted from the cloud. Choosing a device or backup version restores it there.</p>}
                             </div>
                             {group.options.map((option, optionIndex) => (
                                 <button key={optionIndex} disabled={syncingNow} onClick={() => chooseMergeOption(option)} className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-left hover:bg-white/10 space-y-1">
-                                    <span className="block text-sm font-semibold">{option.sources.map(source => ({ device: 'This device', cloud: 'Cloud', backup: 'Backup file' }[source])).join(' / ')}</span>
-                                    {group.collection === 'records' ? (
+                                    <span className="block text-sm font-semibold">{option.deleted ? 'Keep deleted from cloud' : option.sources.map(source => ({ device: 'This device', cloud: 'Cloud', backup: 'Backup file' }[source])).join(' / ')}</span>
+                                    {option.deleted ? (
+                                        <span className="block text-xs text-slate-300">Remove this item from this device too.</span>
+                                    ) : group.collection === 'records' ? (
                                         <span className="block text-xs text-slate-300 break-words">
                                             {(option.value.entries || []).map(entry => `${entry.type || ''} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
                                             <span className="flex flex-wrap gap-2 mt-2">{(option.value.entries || []).filter(entry => entry.photo).map((entry, photoIndex) => <img key={photoIndex} src={entry.photo} alt={`${entry.time || ''} photo`} className="w-12 h-12 object-cover rounded-lg" />)}</span>

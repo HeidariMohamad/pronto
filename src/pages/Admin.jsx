@@ -270,8 +270,13 @@ export const AdminPage = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <img
-                      src={u.avatar_url || 'https://api.dicebear.com/7.x/bottts/svg?seed=user'}
-                      alt={u.name}
+                      src={u.avatar_url || '/avatar-robot.png'}
+                      referrerPolicy="no-referrer"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = '/avatar-robot.png';
+                      }}
+                      alt={u.name || 'User'}
                       className="w-9 h-9 rounded-xl bg-white/10 object-cover"
                     />
                     <div>
