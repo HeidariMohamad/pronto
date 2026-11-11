@@ -65,6 +65,7 @@ export const AdminPage = () => {
 
   // Messaging / Announcement composer state
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [replyTo, setReplyTo] = useState(null);
   const [messageRecipient, setMessageRecipient] = useState('all'); // 'all' or userId
   const [messageTitle, setMessageTitle] = useState('');
   const [messageBody, setMessageBody] = useState('');
@@ -178,8 +179,8 @@ export const AdminPage = () => {
     setSendingMessage(true);
     setError('');
     try {
-      await api.post('/api/admin/notifications', {
-        userId: messageRecipient === 'all' ? null : messageRecipient,
+      await api.post(replyTo ? `/api/admin/messages/${replyTo.id}/replies` : '/api/admin/notifications', {
+        ...(replyTo ? {} : { userId: messageRecipient === 'all' ? null : messageRecipient }),
         title: messageTitle.trim(),
         message: messageBody.trim(),
         type: messageType
@@ -189,6 +190,7 @@ export const AdminPage = () => {
       setMessageTitle('');
       setMessageBody('');
       setMessageRecipient('all');
+      setReplyTo(null);
       await fetchMetricsAndNotifications();
     } catch (err) {
       setError(err.message || 'Failed to send notification');
@@ -270,6 +272,7 @@ export const AdminPage = () => {
 
         <button
           onClick={() => {
+            setReplyTo(null);
             setMessageRecipient('all');
             setIsComposeOpen(true);
           }}
@@ -329,7 +332,12 @@ export const AdminPage = () => {
             <div className="flex justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-white break-words">{message.senderName || message.senderEmail}</p><p className="text-[10px] text-slate-400 break-all">{message.senderEmail} · {new Date(message.createdAt).toLocaleString()}</p></div>
               <button type="button" onClick={() => handleDeleteMessage(message.id)} title="Delete message" aria-label="Delete message" className="p-1 text-red-400"><Trash2 size={15} /></button></div>
             <p className="text-xs text-slate-200 whitespace-pre-wrap break-words">{message.message}</p>
-            <button type="button" onClick={() => { setMessageRecipient(message.userId); setMessageTitle('Reply'); setMessageBody(''); setIsComposeOpen(true); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Reply</button>
+            {(message.replies || []).map(reply => <div key={reply.id} className="ml-3 rounded-lg border-l-2 border-blue-400 bg-blue-500/10 p-2 text-xs">
+              <p className="font-semibold text-blue-300">Reply · {reply.createdBy} · {new Date(reply.createdAt).toLocaleString()}</p>
+              <p className="mt-1 font-medium text-slate-200 break-words">{reply.title}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-slate-300">{reply.message}</p>
+            </div>)}
+            <button type="button" onClick={() => { setReplyTo(message); setError(''); setMessageRecipient(message.userId); setMessageType('info'); setMessageTitle('Reply'); setMessageBody(''); setIsComposeOpen(true); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Reply</button>
           </div>)}
         </div>
       </Card>
@@ -343,6 +351,7 @@ export const AdminPage = () => {
           </div>
           <button
             onClick={() => {
+              setReplyTo(null);
               setMessageRecipient('all');
               setIsComposeOpen(true);
             }}
@@ -535,6 +544,7 @@ export const AdminPage = () => {
                     <button
                       type="button"
                       onClick={() => {
+                        setReplyTo(null);
                         setMessageRecipient(u.id);
                         setIsComposeOpen(true);
                       }}
@@ -669,7 +679,7 @@ export const AdminPage = () => {
               <div className="flex items-center gap-2">
                 <Send size={18} className="text-blue-400" />
                 <h3 className="text-base font-bold">
-                  {messageRecipient === 'all' ? 'Broadcast Announcement' : 'Send Direct Message'}
+                  {replyTo ? 'Reply to User' : messageRecipient === 'all' ? 'Broadcast Announcement' : 'Send Direct Message'}
                 </h3>
               </div>
               <button
@@ -681,6 +691,8 @@ export const AdminPage = () => {
               </button>
             </div>
 
+            {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
+            {replyTo && <p className="rounded-xl bg-white/5 p-3 text-xs text-slate-300 whitespace-pre-wrap break-words">{replyTo.message}</p>}
             <div className="space-y-3 text-xs">
               {/* Recipient Selector */}
               <div>
@@ -689,6 +701,7 @@ export const AdminPage = () => {
                 </label>
                 <select
                   value={messageRecipient}
+                  disabled={!!replyTo}
                   onChange={(e) => setMessageRecipient(e.target.value)}
                   className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-white outline-none focus:border-blue-400"
                 >

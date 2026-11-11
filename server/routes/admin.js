@@ -11,7 +11,8 @@ import {
   getAllNotifications,
   deleteNotification,
   getSupportMessages,
-  deleteSupportMessage
+  deleteSupportMessage,
+  replyToSupportMessage
 } from '../db.js';
 
 const router = Router();
@@ -19,6 +20,19 @@ const router = Router();
 router.get('/messages', requireAdmin, (req, res) => {
   try { res.json({ messages: getSupportMessages() }); }
   catch (err) { console.error('Fetch messages error:', err); res.status(500).json({ error: 'Failed to fetch messages' }); }
+});
+
+router.post('/messages/:id/replies', requireAdmin, (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid message id' });
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim() : '';
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  const type = ['info', 'warning', 'alert', 'success'].includes(req.body?.type) ? req.body.type : 'info';
+  if (!title || title.length > 200 || !message || message.length > 4000) return res.status(400).json({ error: 'Enter a title and a message of up to 4000 characters.' });
+  try {
+    const notification = replyToSupportMessage(Number(req.params.id), title, message, req.user.email, type);
+    if (!notification) return res.status(404).json({ error: 'Message not found' });
+    return res.status(201).json({ success: true, notification });
+  } catch (err) { console.error('Reply to message error:', err); return res.status(500).json({ error: 'Failed to send reply' }); }
 });
 
 router.delete('/messages/:id', requireAdmin, (req, res) => {

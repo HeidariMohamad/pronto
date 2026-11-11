@@ -580,8 +580,7 @@ input[type="time"] {
 
 .page-transition-container {
   width: 100%;
-  animation: pageSwipeIn 420ms cubic-bezier(.22, 1, .36, 1) both;
-  will-change: opacity, transform;
+  animation: pageSwipeIn 420ms cubic-bezier(.22, 1, .36, 1) backwards;
 }
 .page-from-right { --page-swipe-x: 42px; }
 .page-from-left { --page-swipe-x: -42px; }

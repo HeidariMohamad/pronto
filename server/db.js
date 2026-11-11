@@ -134,6 +134,17 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_support_messages_user_time ON support_messages(user_id, created_at);
 
+  CREATE TABLE IF NOT EXISTS support_replies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    created_by TEXT,
+    FOREIGN KEY(message_id) REFERENCES support_messages(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_replies_message ON support_replies(message_id, created_at);
+
   CREATE TABLE IF NOT EXISTS notification_reads (
     notification_id TEXT,
     user_id TEXT,
@@ -296,9 +307,21 @@ export function countRecentSupportMessages(userId, since) {
 }
 
 export function getSupportMessages() {
-  return db.prepare(`SELECT m.id, m.user_id AS userId, m.message, m.created_at AS createdAt,
+  const messages = db.prepare(`SELECT m.id, m.user_id AS userId, m.message, m.created_at AS createdAt,
     u.name AS senderName, u.email AS senderEmail
     FROM support_messages m JOIN users u ON u.id = m.user_id ORDER BY m.created_at DESC, m.id DESC LIMIT 500`).all();
+  const getReplies = db.prepare('SELECT id, title, message, created_at AS createdAt, created_by AS createdBy FROM support_replies WHERE message_id = ? ORDER BY created_at, id');
+  return messages.map(message => ({ ...message, replies: getReplies.all(message.id) }));
+}
+
+export function replyToSupportMessage(id, title, message, createdBy, type) {
+  return runTransaction(() => {
+    const original = db.prepare('SELECT user_id FROM support_messages WHERE id = ?').get(id);
+    if (!original) return null;
+    const now = Date.now();
+    db.prepare('INSERT INTO support_replies (message_id, title, message, created_at, created_by) VALUES (?, ?, ?, ?, ?)').run(id, title, message, now, createdBy);
+    return createNotification({ userId: original.user_id, title, message, type, createdBy });
+  });
 }
 
 export function deleteSupportMessage(id) {

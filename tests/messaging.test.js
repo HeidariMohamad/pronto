@@ -39,8 +39,15 @@ test('user contact is private, authenticated, validated, and admins can reply an
     assert.equal(messages[0].userId, user.id);
     assert.equal(messages[0].message, 'Please help');
     assert.equal((await request(`/api/admin/messages/${messages[0].id}`, userToken, 'DELETE')).status, 403);
-    assert.equal((await request('/api/admin/notifications', adminToken, 'POST', { userId: user.id, title: 'Reply', message: 'Here is help' })).status, 200);
+    const replyUrl = `/api/admin/messages/${messages[0].id}/replies`;
+    assert.equal((await request(replyUrl, userToken, 'POST', { title: 'Reply', message: 'No access' })).status, 403);
+    assert.equal((await request(replyUrl, adminToken, 'POST', { title: 'Reply', message: '   ' })).status, 400);
+    assert.equal((await request('/api/admin/messages/99999/replies', adminToken, 'POST', { title: 'Reply', message: 'Missing' })).status, 404);
+    assert.equal((await request(replyUrl, adminToken, 'POST', { userId: admin.id, title: 'Reply', message: 'Here is help' })).status, 201);
     assert.ok(getUserNotifications(user.id).some(n => n.message === 'Here is help'));
+    assert.ok(!getUserNotifications(admin.id).some(n => n.message === 'Here is help'));
+    const updatedInbox = await (await request('/api/admin/messages', adminToken)).json();
+    assert.equal(updatedInbox.messages[0].replies[0].message, 'Here is help');
     assert.equal((await request(`/api/admin/messages/${messages[0].id}`, adminToken, 'DELETE')).status, 200);
     assert.deepEqual((await (await request('/api/admin/messages', adminToken)).json()).messages, []);
     const notification = createNotification({ title: 'Recall', message: 'Delete me' });
