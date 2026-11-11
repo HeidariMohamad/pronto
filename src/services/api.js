@@ -16,6 +16,12 @@ function handleForbiddenSuspension(res, err) {
 }
 
 export const api = {
+  async getImage(endpoint) {
+    const res = await fetch(`${API_BASE}${endpoint}`, { headers: getAuthHeader(), credentials: 'include', cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.headers.get('content-type')?.startsWith('image/')) throw new Error('Invalid image response');
+    return res.blob();
+  },
   async get(endpoint) {
     const res = await fetch(`${API_BASE}${endpoint}`, {
       method: 'GET',

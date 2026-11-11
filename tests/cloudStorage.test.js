@@ -16,11 +16,13 @@ const { embeddedPhotoKey: clientPhotoKey } = await import('../src/services/merge
 const { generateToken, requireAuth } = await import('../server/routes/auth.js');
 const { default: storage, authorizeStoredUpload } = await import('../server/routes/storage.js');
 const { default: sync } = await import('../server/routes/sync.js');
+const { default: admin } = await import('../server/routes/admin.js');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 app.use('/api/storage', storage);
 app.use('/api/sync', sync);
+app.use('/api/admin', admin);
 app.use('/uploads', requireAuth, authorizeStoredUpload, express.static(uploadDir));
 const server = await new Promise(resolve => {
   const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
@@ -33,6 +35,8 @@ after(async () => {
 });
 
 for (const id of ['user-a', 'user-b']) upsertUser({ id, google_id: id, email: `${id}@example.com`, name: id, avatar_url: null });
+upsertUser({ id: 'admin', google_id: 'admin', email: 'admin@example.com', name: 'Admin', avatar_url: null });
+db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run('admin');
 const token = id => generateToken({ id, email: `${id}@example.com`, is_admin: 0 });
 async function request(id, route, body) {
   const response = await fetch(`${base}${route}`, {
@@ -61,6 +65,29 @@ test('inventory, deletion and explicit restore stay scoped to the signed-in acco
   assert.equal((await request('user-a', '/api/storage/restore', { collection: 'records', id: day, deletedAt: deleted.data.deletedAt, value: record })).status, 200);
   assert.equal(getRecords('user-a').length, 1);
   assert.equal(getDeletedItems('user-a').length, 0);
+});
+
+test('admin photo previews require admin access and match the selected user', async () => {
+  const dir = path.join(uploadDir, 'user-a');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'admin-preview.webp'), 'preview');
+  addFileRecord('admin-preview', 'user-a', 'admin-preview.webp', 'preview.webp', 7);
+  upsertRecord('user-a', { date: '2026-07-01', entries: [{ photo: 'data:image/png;base64,Zm9v' }], note: '', updatedAt: 100 });
+  const get = (id, route) => fetch(`${base}${route}`, { headers: id ? { Authorization: `Bearer ${token(id)}` } : {} });
+  const file = '/api/admin/users/user-a/photos/admin-preview';
+  const embedded = '/api/admin/users/user-a/records/2026-07-01/photos/0';
+  assert.equal((await get(null, file)).status, 401);
+  assert.equal((await get('user-b', file)).status, 403);
+  assert.equal((await get('user-b', embedded)).status, 403);
+  assert.equal((await get('admin', '/api/admin/users/user-b/photos/admin-preview')).status, 404);
+  const response = await get('admin', file);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('cache-control'), /no-store/);
+  assert.equal(await response.text(), 'preview');
+  const image = await get('admin', embedded);
+  assert.equal(image.status, 200);
+  assert.equal(await image.text(), 'foo');
+  assert.equal((await get('admin', '/api/admin/users/user-b/records/2026-07-01/photos/0')).status, 404);
 });
 
 test('photo deletion cannot target another user and stale records cannot restore its URL', async () => {

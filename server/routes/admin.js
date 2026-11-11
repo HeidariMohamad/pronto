@@ -1,6 +1,12 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import process from 'node:process';
+import { fileURLToPath } from 'node:url';
+import { Buffer } from 'node:buffer';
 import { requireAdmin } from './auth.js';
 import { 
+  db,
   getAllUsersStats, 
   getUserDataForAdmin,
   getDefaultStorageLimitMb, 
@@ -17,6 +23,30 @@ import {
 } from '../db.js';
 
 const router = Router();
+
+router.get('/users/:id/photos/:fileId', requireAdmin, (req, res) => {
+  const file = db.prepare('SELECT filename FROM files WHERE user_id = ? AND id = ?').get(req.params.id, req.params.fileId);
+  if (!file || path.basename(file.filename) !== file.filename || path.basename(req.params.id) !== req.params.id) return res.sendStatus(404);
+  const root = path.resolve(process.env.UPLOAD_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '../uploads'));
+  const filePath = path.resolve(root, req.params.id, file.filename);
+  if (!filePath.startsWith(path.join(root, req.params.id) + path.sep) || !fs.existsSync(filePath)) return res.sendStatus(404);
+  res.set('Cache-Control', 'private, no-store');
+  return res.sendFile(filePath);
+});
+
+router.get('/users/:id/records/:date/photos/:index', requireAdmin, (req, res) => {
+  const index = Number(req.params.index);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(req.params.date) || !Number.isSafeInteger(index) || index < 0) return res.sendStatus(400);
+  const row = db.prepare('SELECT entries FROM records WHERE user_id = ? AND date = ?').get(req.params.id, req.params.date);
+  if (!row) return res.sendStatus(404);
+  try {
+    const photo = JSON.parse(row.entries || '[]')[index]?.photo;
+    const match = typeof photo === 'string' && /^data:(image\/(?:png|jpeg|webp|gif));base64,([A-Za-z0-9+/=\r\n]+)$/i.exec(photo);
+    if (!match) return res.sendStatus(404);
+    res.set('Cache-Control', 'private, no-store');
+    return res.type(match[1]).send(Buffer.from(match[2], 'base64'));
+  } catch { return res.sendStatus(404); }
+});
 
 router.get('/users/:id/data', requireAdmin, (req, res) => {
   try {

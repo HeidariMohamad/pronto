@@ -44,18 +44,46 @@ function recordEntries(record) {
   } catch { return []; }
 }
 
-function recordPhotos(record, files) {
-  return recordEntries(record).filter(entry => {
-    if (typeof entry?.photo !== 'string') return false;
-    if (entry.photo.startsWith('data:image/')) return true;
-    try { return files.some(file => new URL(entry.photo, window.location.origin).pathname.endsWith(`/${encodeURIComponent(file.filename)}`)); }
-    catch { return false; }
-  }).length;
+function recordPhotos(record, files, userId) {
+  return recordEntries(record).flatMap((entry, index) => {
+    if (typeof entry?.photo !== 'string') return [];
+    const match = /^data:image\/(?:png|jpeg|webp|gif);base64,([A-Za-z0-9+/=\r\n]+)$/i.exec(entry.photo);
+    if (match) {
+      const data = match[1].replace(/[\r\n]/g, '');
+      const size = Math.floor(data.length * 3 / 4) - (data.endsWith('==') ? 2 : data.endsWith('=') ? 1 : 0);
+      return [{ key: `${record.date}:${index}`, size, embedded: true, time: entry.time, url: `/api/admin/users/${encodeURIComponent(userId)}/records/${encodeURIComponent(record.date)}/photos/${index}` }];
+    }
+    try {
+      const url = new URL(entry.photo, window.location.origin);
+      const file = url.origin === window.location.origin && files.find(item => url.pathname === `/uploads/${encodeURIComponent(userId)}/${encodeURIComponent(item.filename)}`);
+      return file ? [{ key: `${record.date}:${index}`, size: file.sizeBytes, time: entry.time, url: `/api/admin/users/${encodeURIComponent(userId)}/photos/${encodeURIComponent(file.id)}` }] : [];
+    } catch { return []; }
+  });
 }
 
-function SavedDays({ records, files, t }) {
+function recordSize(record, photos) {
+  const encoder = new TextEncoder();
+  return encoder.encode(typeof record.entries === 'string' ? record.entries : JSON.stringify(record.entries || [])).length + encoder.encode(record.note || '').length + encoder.encode(record.date || '').length + photos.filter(photo => !photo.embedded).reduce((sum, photo) => sum + Number(photo.size || 0), 0);
+}
+
+function PhotoPreview({ photo, t }) {
+  const [url, setUrl] = useState('');
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  const open = async () => {
+    if (url) { setUrl(''); return; }
+    setLoading(true); setError(false);
+    try { setUrl(URL.createObjectURL(await api.getImage(photo.url))); }
+    catch { setError(true); }
+    finally { setLoading(false); }
+  };
+  return <div className="rounded-xl bg-black/20 p-2 text-xs"><div className="flex items-center justify-between gap-2"><span className="text-slate-300">{photo.time || t('Photo')} · {formatBytes(photo.size)}</span><button type="button" onClick={open} disabled={loading} className="rounded-lg bg-white/5 px-3 py-2 text-blue-300 hover:bg-white/10">{loading ? t('Loading…') : url ? t('Hide photo') : t('View photo')}</button></div>{error && <p role="alert" className="mt-2 text-red-300">{t('Could not load photo')}</p>}{url && <img src={url} alt={t('Saved photo')} className="mt-2 max-h-80 w-full rounded-lg object-contain" />}</div>;
+}
+
+function SavedDays({ records, files, userId, t }) {
   if (!records.length) return <p className="text-xs text-slate-400">{t('No saved records')}</p>;
-  return <div className="divide-y divide-white/5">{records.map(record => <div key={record.date} className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs"><span className="font-medium text-slate-200">{record.date}</span><span className="text-slate-400">{t('Saved punches: {count}', { count: recordEntries(record).length })} · {t('Saved photos: {count}', { count: recordPhotos(record, files) })}</span></div>)}</div>;
+  return <div className="divide-y divide-white/5">{records.map(record => { const photos = recordPhotos(record, files, userId); return <details key={record.date} className="py-2 text-xs"><summary className="cursor-pointer text-slate-200">{record.date} <span className="text-slate-400">· {t('Saved punches: {count}', { count: recordEntries(record).length })} · {t('Saved photos: {count}', { count: photos.length })} · {formatBytes(recordSize(record, photos))}</span></summary><div className="mt-2 space-y-2">{photos.map(photo => <PhotoPreview key={photo.key} photo={photo} t={t} />)}{!photos.length && <p className="text-slate-400">{t('No saved photos for this day')}</p>}</div></details>; })}</div>;
 }
 
 export const AdminPage = () => {
@@ -665,14 +693,21 @@ export const AdminPage = () => {
             </div>
             {userDataLoading ? <p className="text-sm text-slate-400">{t('Loading…')}</p> : <>
               <CloudBackupSummary usage={viewingUserData.storageUsage} />
+              {(() => {
+                const { records, files } = viewingUserData.cloud;
+                const photos = records.flatMap(record => recordPhotos(record, files, viewingUserData.user.id));
+                const total = photos.reduce((sum, photo) => sum + Number(photo.size || 0), 0);
+                const dayBytes = records.reduce((sum, record) => sum + recordSize(record, recordPhotos(record, files, viewingUserData.user.id)), 0);
+                return <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2 text-xs text-slate-300"><h4 className="text-sm font-semibold text-blue-300">{t('Attached photo storage')}</h4><p>{t('Photos: {count} · Total: {size}', { count: photos.length, size: formatBytes(total) })}</p><p>{t('Average per photo: {size}', { size: photos.length ? formatBytes(total / photos.length) : '—' })}</p><p>{t('Average per saved day: {size}', { size: records.length ? formatBytes(dayBytes / records.length) : '—' })}</p><p>{t('Average photo storage per saved day: {size}', { size: records.length ? formatBytes(total / records.length) : '—' })}</p><p className="text-slate-500">{t('Day size includes saved records and attached photos; averages include days without photos.')}</p></section>;
+              })()}
               <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-3"><h4 className="text-sm font-semibold text-purple-300">{t('Saved semesters')} ({viewingUserData.cloud.semesters.length})</h4>
                 {viewingUserData.cloud.semesters.map(item => {
                   const records = viewingUserData.cloud.records.filter(record => record.date >= item.startDate && record.date <= item.endDate);
-                  const photos = records.reduce((sum, record) => sum + recordPhotos(record, viewingUserData.cloud.files), 0);
-                  return <details key={item.id} className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><summary className="cursor-pointer"><strong>{item.name || t('Schedule')}</strong><span className="block mt-1 text-xs text-slate-400">{item.startDate} – {item.endDate}</span><span className="block mt-2 text-xs text-blue-300">{t('Saved days: {count}', { count: records.length })} · {t('Saved photos: {count}', { count: photos })}</span></summary><div className="mt-3 border-t border-white/10"><SavedDays records={records} files={viewingUserData.cloud.files} t={t} /></div></details>;
+                  const photos = records.reduce((sum, record) => sum + recordPhotos(record, viewingUserData.cloud.files, viewingUserData.user.id).length, 0);
+                  return <details key={item.id} className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><summary className="cursor-pointer"><strong>{item.name || t('Schedule')}</strong><span className="block mt-1 text-xs text-slate-400">{item.startDate} – {item.endDate}</span><span className="block mt-2 text-xs text-blue-300">{t('Saved days: {count}', { count: records.length })} · {t('Saved photos: {count}', { count: photos })}</span></summary><div className="mt-3 border-t border-white/10"><SavedDays records={records} files={viewingUserData.cloud.files} userId={viewingUserData.user.id} t={t} /></div></details>;
                 })}
                 {!viewingUserData.cloud.semesters.length && <p className="text-xs text-slate-400">{t('No saved schedules')}</p>}
-                {viewingUserData.cloud.records.some(record => !viewingUserData.cloud.semesters.some(item => record.date >= item.startDate && record.date <= item.endDate)) && <details className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><summary className="cursor-pointer font-medium">{t('Days outside semesters')}</summary><SavedDays records={viewingUserData.cloud.records.filter(record => !viewingUserData.cloud.semesters.some(item => record.date >= item.startDate && record.date <= item.endDate))} files={viewingUserData.cloud.files} t={t} /></details>}
+                {viewingUserData.cloud.records.some(record => !viewingUserData.cloud.semesters.some(item => record.date >= item.startDate && record.date <= item.endDate)) && <details className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><summary className="cursor-pointer font-medium">{t('Days outside semesters')}</summary><SavedDays records={viewingUserData.cloud.records.filter(record => !viewingUserData.cloud.semesters.some(item => record.date >= item.startDate && record.date <= item.endDate))} files={viewingUserData.cloud.files} userId={viewingUserData.user.id} t={t} /></details>}
                 <p className="text-[11px] text-slate-400">{t('Photo counts include photos attached to saved punches. Overlapping semesters can include the same day.')}</p>
               </section>
             </>}
