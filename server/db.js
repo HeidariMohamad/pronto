@@ -252,11 +252,14 @@ export function getStorageUsage(userId) {
   const dbBytes = Number(recordsRow?.bytes || 0) + Number(semestersRow?.bytes || 0) + Number(settingsRow?.bytes || 0);
   const filesBytes = Number(filesRow?.bytes || 0);
   const totalBytes = dbBytes + filesBytes;
+  const coverage = db.prepare('SELECT MIN(date) AS firstRecordDate, MAX(date) AS lastRecordDate FROM records WHERE user_id = ?').get(userId);
+  const fileCoverage = db.prepare('SELECT MIN(created_at) AS firstFileSavedAt, MAX(created_at) AS lastFileSavedAt FROM files WHERE user_id = ?').get(userId);
 
   return {
     dbBytes,
     filesBytes,
     totalBytes,
+    backupCoverage: { ...coverage, ...fileCoverage, schedulesCount: Number(semestersRow?.count || 0) },
     recordsCount: Number(recordsRow?.count || 0),
     filesCount: Number(filesRow?.count || 0),
     storageLimitBytes,
@@ -284,6 +287,21 @@ export function getAllUsersStats() {
       ...usage
     };
   });
+}
+
+export function getUserDataForAdmin(userId) {
+  const user = db.prepare('SELECT id, email, name FROM users WHERE id = ?').get(userId);
+  if (!user) return null;
+  return {
+    user,
+    storageUsage: getStorageUsage(userId),
+    cloud: {
+      records: db.prepare('SELECT date, entries, note, updated_at AS updatedAt FROM records WHERE user_id = ? ORDER BY date DESC').all(userId),
+      semesters: db.prepare('SELECT id, name, start_date AS startDate, end_date AS endDate, targets, updated_at AS updatedAt FROM semesters WHERE user_id = ? ORDER BY start_date DESC').all(userId),
+      settings: db.prepare('SELECT data, updated_at AS updatedAt FROM settings WHERE user_id = ?').get(userId) || null,
+      files: db.prepare('SELECT id, filename, original_name AS originalName, size_bytes AS sizeBytes, created_at AS createdAt FROM files WHERE user_id = ? ORDER BY created_at DESC').all(userId)
+    }
+  };
 }
 
 // User ban management

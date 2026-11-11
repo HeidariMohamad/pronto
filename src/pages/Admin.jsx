@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { Card } from '../components/UI';
+import { CloudBackupSummary } from '../components/BackupStatus';
 import { useTranslation } from '../hooks/useTranslation';
 import { 
   Users, 
@@ -36,6 +37,12 @@ function formatBytes(bytes, decimals = 1) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
+function prettyStoredJson(value, fallback = []) {
+  if (typeof value !== 'string') return JSON.stringify(value ?? fallback, null, 2);
+  try { return JSON.stringify(JSON.parse(value), null, 2); }
+  catch { return value; }
+}
+
 export const AdminPage = () => {
   const { user, isAdmin } = useAuth();
   const { t } = useTranslation();
@@ -48,6 +55,8 @@ export const AdminPage = () => {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [search, setSearch] = useState('');
+  const [viewingUserData, setViewingUserData] = useState(null);
+  const [userDataLoading, setUserDataLoading] = useState(false);
 
   // Default storage limit state
   const [defaultLimitInput, setDefaultLimitInput] = useState('50');
@@ -79,7 +88,7 @@ export const AdminPage = () => {
       const [resMetrics, resNotifs, resInbox] = await Promise.all([
         api.get('/api/admin/metrics'),
         api.get('/api/admin/notifications').catch(() => ({ notifications: [] })),
-        api.get('/api/admin/messages').then(result => { setInboxError(''); return result; }).catch(() => { setInboxError(t("Could not load user messages. Refresh to try again.")); return null; })
+        api.get('/api/admin/messages').then(result => { setInboxError(''); return result; }).catch(() => { setInboxError("Could not load user messages. Refresh to try again."); return null; })
       ]);
 
       setData(resMetrics);
@@ -89,7 +98,7 @@ export const AdminPage = () => {
         setDefaultLimitInput(String(resMetrics.defaultLimitMb));
       }
     } catch {
-      setError(t("Failed to fetch admin metrics"));
+      setError("Failed to fetch admin metrics");
     } finally {
       setLoading(false);
     }
@@ -103,8 +112,8 @@ export const AdminPage = () => {
     fetchMetricsAndNotifications();
   }, [isAdmin, navigate]);
 
-  const showNotificationSuccess = (msg) => {
-    setSuccessMsg(msg);
+  const showNotificationSuccess = (key, values = {}) => {
+    setSuccessMsg({ key, values });
     setTimeout(() => setSuccessMsg(''), 3500);
   };
 
@@ -112,7 +121,7 @@ export const AdminPage = () => {
   const handleSaveDefaultLimit = async () => {
     const val = parseInt(defaultLimitInput, 10);
     if (!val || val < 1) {
-      setError(t("Please enter a valid positive number for storage limit"));
+      setError("Please enter a valid positive number for storage limit");
       return;
     }
 
@@ -120,10 +129,10 @@ export const AdminPage = () => {
     setError('');
     try {
       await api.put('/api/admin/config/storage-limit', { limitMb: val });
-      showNotificationSuccess(t("Default storage limit updated to {value} MB", { value: val }));
+      showNotificationSuccess("Default storage limit updated to {value} MB", { value: val });
       await fetchMetricsAndNotifications();
     } catch {
-      setError(t("Failed to update default limit"));
+      setError("Failed to update default limit");
     } finally {
       setSavingDefault(false);
     }
@@ -138,11 +147,11 @@ export const AdminPage = () => {
     try {
       const val = customLimitInput.trim() === '' ? null : parseInt(customLimitInput, 10);
       await api.put(`/api/admin/users/${editingUser.id}/storage-limit`, { limitMb: val });
-      showNotificationSuccess(t("Storage limit updated for {name}", { name: editingUser.name }));
+      showNotificationSuccess("Storage limit updated for {name}", { name: editingUser.name });
       setEditingUser(null);
       await fetchMetricsAndNotifications();
     } catch {
-      setError(t("Failed to update user limit"));
+      setError("Failed to update user limit");
     } finally {
       setSavingUserLimit(false);
     }
@@ -157,12 +166,12 @@ export const AdminPage = () => {
         isBanned: isBanning,
         reason: isBanning ? banReasonInput.trim() : ''
       });
-      showNotificationSuccess(isBanning ? t("{name} has been suspended.", { name: userToBan.name }) : t("Suspension lifted for {name}.", { name: userToBan.name }));
+      showNotificationSuccess(isBanning ? "{name} has been suspended." : "Suspension lifted for {name}.", { name: userToBan.name });
       setBanningUser(null);
       setBanReasonInput('');
       await fetchMetricsAndNotifications();
     } catch {
-      setError(t("Failed to update user ban status"));
+      setError("Failed to update user ban status");
     } finally {
       setProcessingBan(false);
     }
@@ -172,7 +181,7 @@ export const AdminPage = () => {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageTitle.trim() || !messageBody.trim()) {
-      setError(t("Please enter both a title and message"));
+      setError("Please enter both a title and message");
       return;
     }
 
@@ -185,7 +194,7 @@ export const AdminPage = () => {
         message: messageBody.trim(),
         type: messageType
       });
-      showNotificationSuccess(t("Notification sent successfully!"));
+      showNotificationSuccess("Notification sent successfully!");
       setIsComposeOpen(false);
       setMessageTitle('');
       setMessageBody('');
@@ -193,7 +202,7 @@ export const AdminPage = () => {
       setReplyTo(null);
       await fetchMetricsAndNotifications();
     } catch {
-      setError(t("Failed to send notification"));
+      setError("Failed to send notification");
     } finally {
       setSendingMessage(false);
     }
@@ -204,9 +213,9 @@ export const AdminPage = () => {
     try {
       await api.delete(`/api/admin/notifications/${id}`);
       setNotifications(prev => prev.filter(n => n.id !== id));
-      showNotificationSuccess(t("Notification recalled / deleted."));
+      showNotificationSuccess("Notification recalled / deleted.");
     } catch {
-      setError(t("Failed to delete notification"));
+      setError("Failed to delete notification");
     }
   };
 
@@ -214,7 +223,21 @@ export const AdminPage = () => {
     try {
       await api.delete(`/api/admin/messages/${id}`);
       setInbox(prev => prev.filter(message => message.id !== id));
-    } catch { setError(t("Failed to delete message")); }
+    } catch { setError("Failed to delete message"); }
+  };
+
+  const handleViewUserData = async (targetUser) => {
+    setViewingUserData({ user: targetUser, cloud: null });
+    setUserDataLoading(true);
+    try {
+      const result = await api.get(`/api/admin/users/${encodeURIComponent(targetUser.id)}/data`);
+      setViewingUserData(result);
+    } catch {
+      setError(t('Failed to load user data'));
+      setViewingUserData(null);
+    } finally {
+      setUserDataLoading(false);
+    }
   };
 
   if (!isAdmin) return null;
@@ -285,7 +308,7 @@ export const AdminPage = () => {
 
       {error && (
         <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-300 rounded-xl text-xs flex items-center justify-between">
-          <span>{error}</span>
+          <span>{t(error)}</span>
           <button onClick={() => setError('')}><X size={14} /></button>
         </div>
       )}
@@ -293,7 +316,7 @@ export const AdminPage = () => {
       {successMsg && (
         <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 rounded-xl text-xs flex items-center gap-2">
           <Check size={16} />
-          <span>{successMsg}</span>
+          <span>{t(successMsg.key, successMsg.values)}</span>
         </div>
       )}
 
@@ -325,7 +348,7 @@ export const AdminPage = () => {
 
       <Card className="space-y-3 bg-white/5 border border-white/10">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-300"><MessageSquare size={15} />{t("User messages")} ({inbox.length})</div>
-        {inboxError && <p role="alert" className="text-xs text-red-300">{inboxError}</p>}
+        {inboxError && <p role="alert" className="text-xs text-red-300">{t(inboxError)}</p>}
         {!inboxError && inbox.length === 0 && <p className="text-xs text-slate-500">{t("No messages from users yet.")}</p>}
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {inbox.map(message => <div key={message.id} className="rounded-xl bg-black/40 border border-white/5 p-3 space-y-2">
@@ -509,7 +532,7 @@ export const AdminPage = () => {
                         ) : null}
                       </div>
                       <span className="text-xs text-slate-400 block">{u.email}</span>
-                      {u.is_banned && u.ban_reason && (
+                      {!!u.is_banned && !!u.ban_reason && (
                         <span className="text-[10px] text-red-300/80 italic block">
                           {t("Reason")}: "{u.ban_reason}"
                         </span>
@@ -536,10 +559,13 @@ export const AdminPage = () => {
                 </div>
 
                 {/* Breakdown & Action Controls */}
-                <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px] text-slate-400">
-                  <span>DB: {formatBytes(u.dbBytes)} • {t('photos_label')}: {formatBytes(u.filesBytes)} ({u.filesCount || 0})</span>
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <span className="block text-[11px] leading-5 text-slate-400">DB: {formatBytes(u.dbBytes)} • {t('photos_label')}: {formatBytes(u.filesBytes)} ({u.filesCount || 0})</span>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="grid grid-cols-2 min-[420px]:grid-cols-4 gap-2 [&>button]:min-w-0 [&>button]:h-9 [&>button]:justify-center [&>button]:px-2 [&>button]:py-0 [&>button]:text-[11px] [&>button]:font-medium [&>button]:whitespace-nowrap [&_svg]:shrink-0">
+                    <button type="button" onClick={() => handleViewUserData(u)} className="whitespace-nowrap px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-200 flex items-center gap-1.5 text-[11px] transition-colors" title={t('View saved data')}>
+                      <FileText size={11} /><span>{t('View data')}</span>
+                    </button>
                     {/* Send Message to this user */}
                     <button
                       type="button"
@@ -561,7 +587,7 @@ export const AdminPage = () => {
                         setEditingUser(u);
                         setCustomLimitInput(u.isCustomLimit ? String(u.storageLimitMb) : '');
                       }}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 transition-all ${
+                      className={`px-2 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-all ${
                         u.isCustomLimit 
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
                           : 'bg-white/5 hover:bg-white/10 text-slate-300'
@@ -613,6 +639,31 @@ export const AdminPage = () => {
           )}
         </div>
       </Card>
+
+      {/* Ban User Confirmation Modal */}
+      {viewingUserData && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-white/15 rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div><h3 className="text-lg font-semibold text-white">{t('Saved data')}</h3><p className="text-xs text-slate-400">{viewingUserData.user.name} · {viewingUserData.user.email}</p></div>
+              <button type="button" onClick={() => setViewingUserData(null)} className="p-2 text-slate-400 hover:text-white" aria-label={t('Close')}><X size={18}/></button>
+            </div>
+            {userDataLoading ? <p className="text-sm text-slate-400">{t('Loading…')}</p> : <>
+              <CloudBackupSummary usage={viewingUserData.storageUsage} />
+              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-purple-300">{t('Cloud schedules')} ({viewingUserData.cloud.semesters.length})</h4>
+                {viewingUserData.cloud.semesters.map(item => <div key={item.id} className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><strong>{item.name}</strong><span className="block text-xs text-slate-400">{item.startDate} – {item.endDate}</span><pre className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-300">{prettyStoredJson(item.targets)}</pre></div>)}
+                {!viewingUserData.cloud.semesters.length && <p className="text-xs text-slate-400">{t('No saved schedules')}</p>}
+              </section>
+              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-blue-300">{t('Cloud records')} ({viewingUserData.cloud.records.length})</h4>
+                {viewingUserData.cloud.records.map(record => <div key={record.date} className="rounded-xl bg-white/5 p-3 text-xs text-slate-300"><strong className="text-white">{record.date}</strong><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify({ entries: prettyStoredJson(record.entries), note: record.note }, null, 2)}</pre></div>)}
+                {!viewingUserData.cloud.records.length && <p className="text-xs text-slate-400">{t('No saved records')}</p>}
+              </section>
+              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-amber-300">{t('Saved settings')}</h4><pre className="whitespace-pre-wrap break-words text-xs text-slate-300">{viewingUserData.cloud.settings ? prettyStoredJson(viewingUserData.cloud.settings.data, {}) : t('No saved settings')}</pre></section>
+              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-emerald-300">{t('Cloud files')} ({viewingUserData.cloud.files.length})</h4>{viewingUserData.cloud.files.map(file => <p key={file.id} className="text-xs text-slate-300">{file.originalName} · {formatBytes(file.sizeBytes)}</p>)}</section>
+            </>}
+          </div>
+        </div>, document.body
+      )}
 
       {/* Ban User Confirmation Modal */}
       {banningUser && createPortal(
@@ -690,7 +741,7 @@ export const AdminPage = () => {
               </button>
             </div>
 
-            {error && <p role="alert" className="text-xs text-red-300">{error}</p>}
+            {error && <p role="alert" className="text-xs text-red-300">{t(error)}</p>}
             {replyTo && <p className="rounded-xl bg-white/5 p-3 text-xs text-slate-300 whitespace-pre-wrap break-words">{replyTo.message}</p>}
             <div className="space-y-3 text-xs">
               {/* Recipient Selector */}

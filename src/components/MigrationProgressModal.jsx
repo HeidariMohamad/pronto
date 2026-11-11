@@ -24,7 +24,7 @@ export const MigrationProgressModal = () => {
       await refreshStorage();
     } catch (err) {
       console.error('Migration error:', err);
-      setError(t('Failed to complete migration'));
+      setError('Failed to complete migration');
     } finally {
       setInProgress(false);
     }
@@ -91,7 +91,7 @@ export const MigrationProgressModal = () => {
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-center gap-2 text-xs text-red-300 text-left">
             <AlertTriangle size={16} className="shrink-0 text-red-400" />
-            <span>{error}</span>
+            <span>{t(error)}</span>
           </div>
         )}
 

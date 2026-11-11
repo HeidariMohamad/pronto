@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAdmin } from './auth.js';
 import { 
   getAllUsersStats, 
+  getUserDataForAdmin,
   getDefaultStorageLimitMb, 
   setDefaultStorageLimitMb, 
   setUserStorageLimitMb,
@@ -16,6 +17,17 @@ import {
 } from '../db.js';
 
 const router = Router();
+
+router.get('/users/:id/data', requireAdmin, (req, res) => {
+  try {
+    const data = getUserDataForAdmin(req.params.id);
+    if (!data) return res.status(404).json({ error: 'User not found' });
+    return res.json(data);
+  } catch (err) {
+    console.error('Admin user data error:', err);
+    return res.status(500).json({ error: 'Failed to retrieve user data' });
+  }
+});
 
 router.get('/messages', requireAdmin, (req, res) => {
   try { res.json({ messages: getSupportMessages() }); }

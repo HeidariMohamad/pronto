@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
 import { ContactAdmin } from '../components/ContactAdmin';
+import { DeviceBackupStatus } from '../components/BackupStatus';
 
 const appVersion = '0.2.0';
 
@@ -324,7 +325,17 @@ export const SettingsPage = () => {
 
     return (
         <div className="space-y-6 pb-24">
-            <h2 className="text-2xl font-light">{t('settings_title')}</h2>
+            <div className="flex items-center justify-between gap-3">
+                <h2 className="text-2xl font-light">{t('settings_title')}</h2>
+                <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs"
+                >
+                    <RefreshCw size={14} />
+                    <span>{t('Refresh')}</span>
+                </button>
+            </div>
 
             {/* Account & Storage */}
             {user && (
@@ -454,6 +465,7 @@ export const SettingsPage = () => {
                         )}
                     </div>
                     {backupMsg && <p role="status" aria-live="polite" className="text-xs text-slate-200">{backupMsg}</p>}
+                    <DeviceBackupStatus usage={storageUsage} />
                     <CloudStorage />
                 </Card>
             )}
