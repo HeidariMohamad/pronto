@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
@@ -604,9 +605,9 @@ export const AdminPage = () => {
       </Card>
 
       {/* Ban User Confirmation Modal */}
-      {banningUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
-          <div className="w-full max-w-sm bg-[#0d1520] border border-red-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
+      {banningUser && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-red-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between text-red-400">
               <div className="flex items-center gap-2">
                 <ShieldAlert size={20} />
@@ -654,15 +655,15 @@ export const AdminPage = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
 
       {/* Message / Announcement Composer Modal */}
-      {isComposeOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+      {isComposeOpen && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-4 bg-black/70 backdrop-blur-sm">
           <form 
             onSubmit={handleSendMessage}
-            className="w-full max-w-md bg-[#0d1520] border border-white/15 rounded-3xl p-5 shadow-2xl space-y-4"
+            className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-white/15 rounded-3xl p-5 shadow-2xl space-y-4"
           >
             <div className="flex items-center justify-between text-white">
               <div className="flex items-center gap-2">
@@ -777,13 +778,13 @@ export const AdminPage = () => {
               </button>
             </div>
           </form>
-        </div>
+        </div>, document.body
       )}
 
       {/* Edit User Limit Modal */}
-      {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-sm bg-[#0d1520] border border-white/10 rounded-3xl p-5 shadow-2xl space-y-4">
+      {editingUser && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-white/10 rounded-3xl p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-white">
                 Storage Limit for {editingUser.name}
@@ -829,7 +830,7 @@ export const AdminPage = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>, document.body
       )}
 
     </div>
