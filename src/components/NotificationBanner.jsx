@@ -1,3 +1,4 @@
+import { useTranslation } from '../hooks/useTranslation';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -5,31 +6,26 @@ import { api } from '../services/api';
 import { Info, AlertTriangle, AlertCircle, CheckCircle, X, ShieldAlert, HardDrive } from 'lucide-react';
 
 export function NotificationBanner() {
+  const { t } = useTranslation();
   const { user, storageUsage } = useAuth();
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [dismissedQuotaAlert, setDismissedQuotaAlert] = useState(false);
 
-  const fetchNotifications = async () => {
-    if (!user || !localStorage.getItem('pronto_token')) return;
-    try {
-      setLoading(true);
-      const res = await api.get('/api/notifications');
-      if (res?.notifications) {
-        setNotifications(res.notifications.filter(n => !n.isRead));
-      }
-    } catch (err) {
-      // Silently ignore if offline or unauthenticated
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
+    if (!user?.id || !localStorage.getItem('pronto_token')) return;
+    let active = true;
+    const fetchNotifications = async () => {
+      try {
+        const res = await api.get('/api/notifications');
+        if (active && res?.notifications) setNotifications(res.notifications.filter(n => !n.isRead));
+      } catch {
+        // Offline or unauthenticated; retry on the next poll.
+      }
+    };
     fetchNotifications();
     const interval = setInterval(fetchNotifications, 120000);
-    return () => clearInterval(interval);
+    return () => { active = false; clearInterval(interval); };
   }, [user?.id]);
 
   const handleDismiss = async (id) => {
@@ -80,20 +76,20 @@ export function NotificationBanner() {
             <HardDrive size={18} className="text-rose-400 shrink-0 mt-0.5 animate-pulse" />
             <div className="space-y-0.5 text-xs">
               <p className="font-bold text-red-100 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <span>Cloud Storage Full</span>
+                <span>{t("Cloud Storage Full")}</span>
                 <span className="text-[10px] bg-red-500/30 px-1 rounded font-mono">
                   {Math.round(storageUsage.totalBytes / (1024 * 1024))} MB / {storageUsage.storageLimitMb} MB
                 </span>
               </p>
               <p className="opacity-90 leading-relaxed text-[11px]">
-                You have reached your cloud storage quota. Syncing and photo uploads are paused.
+                {t("You have reached your cloud storage quota. Syncing and photo uploads are paused.")}
               </p>
               <button
                 type="button"
                 onClick={() => navigate('/settings')}
                 className="mt-1 text-[11px] font-bold text-white underline hover:text-red-200 block"
               >
-                Manage Cloud Storage →
+                {t("Manage Cloud Storage")} →
               </button>
             </div>
           </div>
@@ -102,7 +98,7 @@ export function NotificationBanner() {
             type="button"
             onClick={() => setDismissedQuotaAlert(true)}
             className="p-1 text-slate-300 hover:text-white shrink-0"
-            title="Dismiss alert"
+            title={t("Dismiss alert")}
           >
             <X size={15} />
           </button>
@@ -115,13 +111,13 @@ export function NotificationBanner() {
           <ShieldAlert size={20} className="text-red-400 shrink-0 mt-0.5" />
           <div className="flex-1 text-xs space-y-1">
             <p className="font-bold text-red-100 uppercase tracking-wider text-[11px]">
-              Account Suspended
+              {t("Account Suspended")}
             </p>
             <p className="leading-relaxed opacity-90">
-              {user.banReason ? `Reason: "${user.banReason}".` : 'Your account has been suspended by an administrator.'}
+              {user.banReason ? `${t("Reason")}: "${user.banReason}".` : t("Your account has been suspended by an administrator.")}
             </p>
             <p className="text-[10px] text-red-300/80">
-              Cloud synchronization and uploads are currently disabled for this account.
+              {t("Cloud synchronization and uploads are currently disabled for this account.")}
             </p>
           </div>
         </div>
@@ -147,7 +143,7 @@ export function NotificationBanner() {
               type="button"
               onClick={() => handleDismiss(notif.id)}
               className="p-1 rounded-lg hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white transition-all shrink-0"
-              title="Dismiss notification"
+              title={t("Dismiss notification")}
             >
               <X size={15} />
             </button>

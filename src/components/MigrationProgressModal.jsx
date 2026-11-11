@@ -24,7 +24,7 @@ export const MigrationProgressModal = () => {
       await refreshStorage();
     } catch (err) {
       console.error('Migration error:', err);
-      setError(err.message || 'Failed to complete migration');
+      setError(t('Failed to complete migration'));
     } finally {
       setInProgress(false);
     }
@@ -37,15 +37,15 @@ export const MigrationProgressModal = () => {
   const getStageText = () => {
     switch (progress.stage) {
       case 'scanning':
-        return `Scanning local history (${progress.totalRecords || 0} days found)...`;
+        return t('Scanning local history ({count} days found)...', { count: progress.totalRecords || 0 });
       case 'uploading_records':
-        return `Uploading records: ${progress.current || 0} of ${progress.total || 0}...`;
+        return t('Uploading records: {current} of {total}...', { current: progress.current || 0, total: progress.total || 0 });
       case 'saving_settings':
-        return 'Synchronizing schedules and preferences...';
+        return t("Synchronizing schedules and preferences...");
       case 'done':
-        return 'All records successfully backed up!';
+        return t("All records successfully backed up!");
       default:
-        return 'Preparing sync...';
+        return t("Preparing sync...");
     }
   };
 
@@ -63,12 +63,12 @@ export const MigrationProgressModal = () => {
         {/* Title */}
         <div className="space-y-2">
           <h2 className="text-xl font-bold tracking-tight text-white">
-            {done ? 'Migration Complete!' : 'Sync Previous History'}
+            {done ? t("Migration Complete!") : t("Sync Previous History")}
           </h2>
           <p className="text-sm text-slate-300/80 leading-relaxed">
             {done
-              ? 'Your past shift records have been saved to your private server.'
-              : 'We detected shift history on this device. Upload them now to back them up to your account.'}
+              ? t("Your past shift records have been saved to your private server.")
+              : t("We detected shift history on this device. Upload them now to back them up to your account.")}
           </p>
         </div>
 
@@ -107,12 +107,12 @@ export const MigrationProgressModal = () => {
                 {inProgress ? (
                   <>
                     <Loader2 size={16} className="animate-spin" />
-                    Backing Up History...
+                    {t("Backing Up History...")}
                   </>
                 ) : (
                   <>
                     <CloudUpload size={18} />
-                    Back Up History Now
+                    {t("Back Up History Now")}
                   </>
                 )}
               </button>
@@ -122,7 +122,7 @@ export const MigrationProgressModal = () => {
                   onClick={handleFinish}
                   className="text-xs text-slate-400 hover:text-white transition-colors"
                 >
-                  Skip for now
+                  {t("Skip for now")}
                 </button>
               )}
             </div>
@@ -131,7 +131,7 @@ export const MigrationProgressModal = () => {
               onClick={handleFinish}
               className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-medium rounded-xl text-sm flex items-center justify-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
             >
-              Continue to Pronto
+              {t("Continue to Pronto")}
               <ArrowRight size={18} />
             </button>
           )}

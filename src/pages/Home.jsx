@@ -260,7 +260,7 @@ export const HomePage = () => {
                                             {formatDurationHM(item.durationMinutes)}
                                         </span>
                                     )}
-                                    {item.durationMinutes === null && (
+                                    {item.inEntry && !item.outEntry && (
                                         <span className="px-2.5 py-0.5 bg-amber-500/15 border border-amber-400/20 text-amber-300 rounded-full text-[11px] font-medium animate-pulse">
                                             {t('in_progress')}
                                         </span>
@@ -315,7 +315,7 @@ export const HomePage = () => {
                                                 <button
                                                     onClick={() => confirmDelete(item.inEntry.id)}
                                                     className="p-1 text-red-400/60 hover:text-red-400 transition-colors"
-                                                    title="Delete punch"
+                                                    title={t("Delete punch")}
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>
@@ -364,7 +364,7 @@ export const HomePage = () => {
                                                 <button
                                                     onClick={() => confirmDelete(item.outEntry.id)}
                                                     className="p-1 text-red-400/60 hover:text-red-400 transition-colors"
-                                                    title="Delete punch"
+                                                    title={t("Delete punch")}
                                                 >
                                                     <Trash2 size={15} />
                                                 </button>

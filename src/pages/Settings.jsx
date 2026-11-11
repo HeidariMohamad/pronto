@@ -183,7 +183,7 @@ export const SettingsPage = () => {
             const latest = await prepareMerge(device, cloud);
             if (!sameSourceSnapshot(plan, latest, 'device') || !sameSourceSnapshot(plan, latest, 'cloud')) {
                 setMergeReview(null);
-                setBackupMsg('Data changed during review. Nothing was changed; start again to compare the latest versions.');
+                setBackupMsg(t("Data changed during review. Nothing was changed; start again to compare the latest versions."));
                 return;
             }
             const restored = new Map();
@@ -218,13 +218,13 @@ export const SettingsPage = () => {
                 if (pending.length) await db.pending_sync.bulkAdd(pending);
             });
             setMergeReview(null);
-            setBackupMsg('Changes saved on this device. Syncing...');
+            setBackupMsg(t("Changes saved on this device. Syncing..."));
             await triggerSync();
             await refreshStorage();
-            setBackupMsg('Sync completed. Device and cloud records were compared.');
+            setBackupMsg(t("Sync completed. Device and cloud records were compared."));
         } catch (err) {
             console.error('Merge or sync failed:', err);
-            setBackupMsg('Sync could not finish. Your local data is kept; please retry.');
+            setBackupMsg(t("Sync could not finish. Your local data is kept; please retry."));
         } finally {
             setSyncingNow(false);
         }
@@ -232,11 +232,11 @@ export const SettingsPage = () => {
 
     const beginMerge = async (backup = null) => {
         if (!navigator.onLine || !localStorage.getItem('pronto_token')) {
-            setBackupMsg('Connect to the internet and sign in before syncing or restoring.');
+            setBackupMsg(t("Connect to the internet and sign in before syncing or restoring."));
             return;
         }
         setSyncingNow(true);
-        setBackupMsg('Comparing device and cloud data...');
+        setBackupMsg(t("Comparing device and cloud data..."));
         try {
             const cloud = await api.get('/api/sync/pull');
             const device = {
@@ -246,14 +246,14 @@ export const SettingsPage = () => {
             };
             const plan = await prepareMerge(device, cloud, backup);
             if (plan.conflicts.length) {
-                setBackupMsg('Review the differences before syncing.');
+                setBackupMsg(t("Review the differences before syncing."));
                 setMergeReview({ plan, index: 0, selections: {} });
             } else {
                 await finishMerge(plan, {});
             }
         } catch (err) {
             console.error('Could not compare data:', err);
-            setBackupMsg('Could not compare cloud data. Nothing was changed; please retry.');
+            setBackupMsg(t("Could not compare cloud data. Nothing was changed; please retry."));
         } finally {
             setSyncingNow(false);
         }
@@ -288,10 +288,10 @@ export const SettingsPage = () => {
             a.href = url;
             a.download = `pronto-backup-${new Date().toISOString().split('T')[0]}.json`;
             a.click();
-            setBackupMsg('Backup saved!');
+            setBackupMsg(t("Backup saved!"));
             setTimeout(() => setBackupMsg(''), 3000);
         } catch {
-            setBackupMsg('Error exporting');
+            setBackupMsg(t("Error exporting"));
         }
     };
 
@@ -312,15 +312,15 @@ export const SettingsPage = () => {
                 await beginMerge(data);
             } catch (err) {
                 console.error('Backup restore failed:', err);
-                setBackupMsg('Backup could not be restored. Existing local data was kept.');
+                setBackupMsg(t("Backup could not be restored. Existing local data was kept."));
             }
         };
-        reader.onerror = () => setBackupMsg('The backup file could not be read.');
+        reader.onerror = () => setBackupMsg(t("The backup file could not be read."));
         reader.readAsText(file);
         e.target.value = '';
     };
 
-    if (!settings) return <div className="p-6 text-center opacity-50">Carregando...</div>;
+    if (!settings) return <div className="p-6 text-center opacity-50">{t("Loading…")}</div>;
 
     return (
         <div className="space-y-6 pb-24">
@@ -351,7 +351,7 @@ export const SettingsPage = () => {
 
                         <button
                             onClick={logout}
-                            title="Sign out"
+                            title={t("Sign out")}
                             className="p-2 text-red-400/80 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors"
                         >
                             <LogOut size={18} />
@@ -593,31 +593,31 @@ export const SettingsPage = () => {
                     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="merge-title">
                         <div className="theme-card w-full max-w-md max-h-[85dvh] overflow-y-auto p-5 space-y-4 text-white shadow-2xl">
                             <div>
-                                <p className="text-xs text-slate-400">Difference {index + 1} of {plan.conflicts.length}</p>
+                                <p className="text-xs text-slate-400">{lang === 'pt' ? `Diferença ${index + 1} de ${plan.conflicts.length}` : lang === 'fa' ? `تفاوت ${index + 1} از ${plan.conflicts.length}` : `Difference ${index + 1} of ${plan.conflicts.length}`}</p>
                                 <h3 id="merge-title" className="text-lg font-semibold mt-1">
-                                    {group.collection === 'records' ? `Choose the record for ${group.key}` : group.collection === 'semesters' ? 'Choose the schedule to keep' : 'Choose the settings to keep'}
+                                    {group.collection === 'records' ? t("Choose the record for {date}", { date: group.key }) : group.collection === 'semesters' ? t("Choose the schedule to keep") : t("Choose the settings to keep")}
                                 </h3>
-                                <p className="text-xs text-slate-300 mt-2">Select the version you want to keep. Nothing changes until all differences are reviewed.</p>
-                                {group.cloud?.deleted && <p className="text-xs text-amber-300 mt-2">This item was deleted from the cloud. Choosing a device or backup version restores it there.</p>}
+                                <p className="text-xs text-slate-300 mt-2">{t("Select the version you want to keep. Nothing changes until all differences are reviewed.")}</p>
+                                {group.cloud?.deleted && <p className="text-xs text-amber-300 mt-2">{t("This item was deleted from the cloud. Choosing a device or backup version restores it there.")}</p>}
                             </div>
                             {group.options.map((option, optionIndex) => (
                                 <button key={optionIndex} disabled={syncingNow} onClick={() => chooseMergeOption(option)} className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-left hover:bg-white/10 space-y-1">
-                                    <span className="block text-sm font-semibold">{option.deleted ? 'Keep deleted from cloud' : option.sources.map(source => ({ device: 'This device', cloud: 'Cloud', backup: 'Backup file' }[source])).join(' / ')}</span>
+                                    <span className="block text-sm font-semibold">{option.deleted ? t("Keep deleted from cloud") : option.sources.map(source => ({ device: t("This device"), cloud: t("Cloud"), backup: t("Backup file") }[source])).join(' / ')}</span>
                                     {option.deleted ? (
-                                        <span className="block text-xs text-slate-300">Remove this item from this device too.</span>
+                                        <span className="block text-xs text-slate-300">{t("Remove this item from this device too.")}</span>
                                     ) : group.collection === 'records' ? (
                                         <span className="block text-xs text-slate-300 break-words">
-                                            {(option.value.entries || []).filter(Boolean).map(entry => `${formatPunchType(entry.type, lang)} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
+                                            {(option.value.entries || []).filter(Boolean).map(entry => `${formatPunchType(entry.type, lang)} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || t("No punches")}{option.value.note ? ` · ${option.value.note}` : ''}
                                             <span className="flex flex-wrap gap-2 mt-2">{(option.value.entries || []).filter(entry => entry?.photo).map((entry, photoIndex) => <img key={photoIndex} src={entry.photo} alt={`${entry.time || ''} photo`} className="w-12 h-12 object-cover rounded-lg" />)}</span>
                                         </span>
                                     ) : group.collection === 'semesters' ? (
-                                        <span className="block text-xs text-slate-300 break-words">{option.value.name || 'Schedule'} · {option.value.startDate} – {option.value.endDate}<br />Hours: {JSON.stringify(option.value.targets || [])}</span>
+                                        <span className="block text-xs text-slate-300 break-words">{option.value.name || t("Schedule")} · {option.value.startDate} – {option.value.endDate}<br />{t('weekday_labels').map((day, index) => { const shifts = option.value.targets?.[index] || []; return <span key={index} className="block">{day}: {shifts.length ? shifts.map(shift => typeof shift === 'number' ? `${M2T(shift)}h` : `${shift.start}–${shift.end}`).join(', ') : t('No shifts')}</span>; })}</span>
                                     ) : (
-                                        <span className="block text-xs text-slate-300 break-words">Theme: {option.value.theme || 'default'} · Language: {option.value.language || 'default'} · Tolerance: {option.value.tolerance || 0} min<br />Hours: {JSON.stringify(option.value.targets || [])}</span>
+                                        <span className="block text-xs text-slate-300 break-words">{t('theme_title')}: {option.value.theme || 'classic'} · {t('lang_title')}: {({pt: 'Português', en: 'English', fa: 'فارسی'})[option.value.language] || 'Português'} · {lang === 'pt' ? 'Tolerância' : lang === 'fa' ? 'تلورانس' : 'Tolerance'}: {option.value.tolerance ? '10' : '0'} min<br />{t('weekday_labels').map((day, index) => { const shifts = option.value.targets?.[index] || []; return <span key={index} className="block">{day}: {shifts.length ? shifts.map(shift => typeof shift === 'number' ? `${M2T(shift)}h` : `${shift.start}–${shift.end}`).join(', ') : t('No shifts')}</span>; })}</span>
                                     )}
                                 </button>
                             ))}
-                            <button disabled={syncingNow} onClick={() => { setMergeReview(null); setBackupMsg('Review cancelled. No data was changed.'); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
+                            <button disabled={syncingNow} onClick={() => { setMergeReview(null); setBackupMsg(t("Review cancelled. No data was changed.")); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
                         </div>
                     </div>
                 );

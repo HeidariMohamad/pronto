@@ -32,7 +32,7 @@ const copy = {
     semesters: 'Schedules', 
     photos: 'Photos', 
     delete: 'Delete', 
-    noPunches: 'No punches', 
+    noPunches: 'No punches',
     error: 'Could not load cloud storage.', 
     deleting: 'Deleting…', 
     changed: 'Deleted from the cloud, but this device changed meanwhile. Use Sync Now to review it.', 
@@ -123,7 +123,7 @@ function size(bytes) {
 }
 
 export function CloudStorage() {
-  const { lang } = useTranslation();
+  const { lang, t } = useTranslation();
   const { refreshStorage } = useAuth();
   const labels = copy[lang] || copy.en;
   const [open, setOpen] = useState(false);
@@ -350,7 +350,7 @@ export function CloudStorage() {
       setSelectedKeys(new Set());
       await load();
       await refreshStorage();
-      setMessage('All photos deleted successfully from cloud storage.');
+      setMessage(t("All photos deleted successfully from cloud storage."));
     } catch (err) {
       console.error('Delete all photos failed:', err);
       setMessage(err.message || labels.error);
@@ -362,7 +362,7 @@ export function CloudStorage() {
   // Nuclear: Wipe All Cloud Data
   const wipeAllCloudData = async () => {
     if (!window.confirm(labels.confirmDeleteAllCloud)) return;
-    if (!window.confirm('Please confirm one more time: Reset all cloud data to 0 MB?')) return;
+    if (!window.confirm(t("Please confirm one more time: Reset all cloud data to 0 MB?"))) return;
 
     setBusy(true);
     setMessage(labels.deleting);
@@ -380,7 +380,7 @@ export function CloudStorage() {
       setSelectedKeys(new Set());
       await load();
       await refreshStorage();
-      setMessage('All cloud data wiped successfully.');
+      setMessage(t("All cloud data wiped successfully."));
     } catch (err) {
       console.error('Wipe all cloud data failed:', err);
       setMessage(err.message || labels.error);

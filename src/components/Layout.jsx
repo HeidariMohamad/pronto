@@ -29,23 +29,23 @@ export const Layout = ({ children }) => {
             case 'syncing':
                 return {
                     className: 'w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_rgba(251,191,36,0.9)]',
-                    title: 'Syncing changes to cloud...'
+                    title: t("Syncing changes to cloud...")
                 };
             case 'offline':
                 return {
                     className: 'w-2 h-2 rounded-full bg-slate-500',
-                    title: 'Offline mode (changes saved locally)'
+                    title: t("Offline mode (changes saved locally)")
                 };
             case 'error':
                 return {
                     className: 'w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]',
-                    title: 'Sync failed (will retry automatically)'
+                    title: t("Sync failed (will retry automatically)")
                 };
             case 'idle':
             default:
                 return {
                     className: 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]',
-                    title: 'Connected & synced'
+                    title: t("Connected & synced")
                 };
         }
     };

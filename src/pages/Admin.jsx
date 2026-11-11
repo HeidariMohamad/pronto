@@ -79,7 +79,7 @@ export const AdminPage = () => {
       const [resMetrics, resNotifs, resInbox] = await Promise.all([
         api.get('/api/admin/metrics'),
         api.get('/api/admin/notifications').catch(() => ({ notifications: [] })),
-        api.get('/api/admin/messages').then(result => { setInboxError(''); return result; }).catch(() => { setInboxError('Could not load user messages. Refresh to try again.'); return null; })
+        api.get('/api/admin/messages').then(result => { setInboxError(''); return result; }).catch(() => { setInboxError(t("Could not load user messages. Refresh to try again.")); return null; })
       ]);
 
       setData(resMetrics);
@@ -88,8 +88,8 @@ export const AdminPage = () => {
       if (resMetrics.defaultLimitMb) {
         setDefaultLimitInput(String(resMetrics.defaultLimitMb));
       }
-    } catch (err) {
-      setError(err.message || 'Failed to fetch admin metrics');
+    } catch {
+      setError(t("Failed to fetch admin metrics"));
     } finally {
       setLoading(false);
     }
@@ -112,7 +112,7 @@ export const AdminPage = () => {
   const handleSaveDefaultLimit = async () => {
     const val = parseInt(defaultLimitInput, 10);
     if (!val || val < 1) {
-      setError('Please enter a valid positive number for storage limit');
+      setError(t("Please enter a valid positive number for storage limit"));
       return;
     }
 
@@ -120,10 +120,10 @@ export const AdminPage = () => {
     setError('');
     try {
       await api.put('/api/admin/config/storage-limit', { limitMb: val });
-      showNotificationSuccess(`Default storage limit updated to ${val} MB`);
+      showNotificationSuccess(t("Default storage limit updated to {value} MB", { value: val }));
       await fetchMetricsAndNotifications();
-    } catch (err) {
-      setError(err.message || 'Failed to update default limit');
+    } catch {
+      setError(t("Failed to update default limit"));
     } finally {
       setSavingDefault(false);
     }
@@ -138,11 +138,11 @@ export const AdminPage = () => {
     try {
       const val = customLimitInput.trim() === '' ? null : parseInt(customLimitInput, 10);
       await api.put(`/api/admin/users/${editingUser.id}/storage-limit`, { limitMb: val });
-      showNotificationSuccess(`Storage limit updated for ${editingUser.name}`);
+      showNotificationSuccess(t("Storage limit updated for {name}", { name: editingUser.name }));
       setEditingUser(null);
       await fetchMetricsAndNotifications();
-    } catch (err) {
-      setError(err.message || 'Failed to update user limit');
+    } catch {
+      setError(t("Failed to update user limit"));
     } finally {
       setSavingUserLimit(false);
     }
@@ -157,12 +157,12 @@ export const AdminPage = () => {
         isBanned: isBanning,
         reason: isBanning ? banReasonInput.trim() : ''
       });
-      showNotificationSuccess(isBanning ? `${userToBan.name} has been suspended.` : `Suspension lifted for ${userToBan.name}.`);
+      showNotificationSuccess(isBanning ? t("{name} has been suspended.", { name: userToBan.name }) : t("Suspension lifted for {name}.", { name: userToBan.name }));
       setBanningUser(null);
       setBanReasonInput('');
       await fetchMetricsAndNotifications();
-    } catch (err) {
-      setError(err.message || 'Failed to update user ban status');
+    } catch {
+      setError(t("Failed to update user ban status"));
     } finally {
       setProcessingBan(false);
     }
@@ -172,7 +172,7 @@ export const AdminPage = () => {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageTitle.trim() || !messageBody.trim()) {
-      setError('Please enter both a title and message');
+      setError(t("Please enter both a title and message"));
       return;
     }
 
@@ -185,15 +185,15 @@ export const AdminPage = () => {
         message: messageBody.trim(),
         type: messageType
       });
-      showNotificationSuccess('Notification sent successfully!');
+      showNotificationSuccess(t("Notification sent successfully!"));
       setIsComposeOpen(false);
       setMessageTitle('');
       setMessageBody('');
       setMessageRecipient('all');
       setReplyTo(null);
       await fetchMetricsAndNotifications();
-    } catch (err) {
-      setError(err.message || 'Failed to send notification');
+    } catch {
+      setError(t("Failed to send notification"));
     } finally {
       setSendingMessage(false);
     }
@@ -204,9 +204,9 @@ export const AdminPage = () => {
     try {
       await api.delete(`/api/admin/notifications/${id}`);
       setNotifications(prev => prev.filter(n => n.id !== id));
-      showNotificationSuccess('Notification recalled / deleted.');
-    } catch (err) {
-      setError(err.message || 'Failed to delete notification');
+      showNotificationSuccess(t("Notification recalled / deleted."));
+    } catch {
+      setError(t("Failed to delete notification"));
     }
   };
 
@@ -214,7 +214,7 @@ export const AdminPage = () => {
     try {
       await api.delete(`/api/admin/messages/${id}`);
       setInbox(prev => prev.filter(message => message.id !== id));
-    } catch (err) { setError(err.message || 'Failed to delete message'); }
+    } catch { setError(t("Failed to delete message")); }
   };
 
   if (!isAdmin) return null;
@@ -246,7 +246,7 @@ export const AdminPage = () => {
           className="flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors"
         >
           <ArrowLeft size={18} />
-          <span>Back to Settings</span>
+          <span>{t("Back to Settings")}</span>
         </button>
 
         <button
@@ -255,7 +255,7 @@ export const AdminPage = () => {
           className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs"
         >
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          <span>Refresh</span>
+          <span>{t("Refresh")}</span>
         </button>
       </div>
 
@@ -265,8 +265,8 @@ export const AdminPage = () => {
             <ShieldCheck size={22} />
           </div>
           <div>
-            <h2 className="text-2xl font-light text-white">Admin Dashboard</h2>
-            <p className="text-xs text-slate-400">Moderation, Quota & Messaging</p>
+            <h2 className="text-2xl font-light text-white">{t("Admin Dashboard")}</h2>
+            <p className="text-xs text-slate-400">{t("Moderation, Quota & Messaging")}</p>
           </div>
         </div>
 
@@ -279,7 +279,7 @@ export const AdminPage = () => {
           className="py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold shadow-lg active:scale-95 transition-all flex items-center gap-1.5"
         >
           <Send size={13} />
-          <span>Broadcast</span>
+          <span>{t("Broadcast")}</span>
         </button>
       </div>
 
@@ -301,14 +301,14 @@ export const AdminPage = () => {
       <div className="grid grid-cols-2 gap-3">
         <Card className="p-3 space-y-1 bg-white/5 border border-white/10">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Users</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider">{t("Users")}</span>
             <Users size={16} />
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-bold text-white">{summary.totalUsers}</span>
             {summary.totalBanned > 0 && (
               <span className="text-[10px] text-red-400 font-bold bg-red-500/10 px-1.5 py-0.5 rounded">
-                {summary.totalBanned} Banned
+                {summary.totalBanned} {t("Banned")}
               </span>
             )}
           </div>
@@ -316,7 +316,7 @@ export const AdminPage = () => {
 
         <Card className="p-3 space-y-1 bg-white/5 border border-white/10">
           <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Total Data</span>
+            <span className="text-[11px] font-bold uppercase tracking-wider">{t("Total Data")}</span>
             <HardDrive size={16} />
           </div>
           <p className="text-2xl font-bold text-white">{formatBytes(summary.totalBytes)}</p>
@@ -324,20 +324,20 @@ export const AdminPage = () => {
       </div>
 
       <Card className="space-y-3 bg-white/5 border border-white/10">
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-300"><MessageSquare size={15} />User messages ({inbox.length})</div>
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-300"><MessageSquare size={15} />{t("User messages")} ({inbox.length})</div>
         {inboxError && <p role="alert" className="text-xs text-red-300">{inboxError}</p>}
-        {!inboxError && inbox.length === 0 && <p className="text-xs text-slate-500">No messages from users yet.</p>}
+        {!inboxError && inbox.length === 0 && <p className="text-xs text-slate-500">{t("No messages from users yet.")}</p>}
         <div className="space-y-2 max-h-72 overflow-y-auto">
           {inbox.map(message => <div key={message.id} className="rounded-xl bg-black/40 border border-white/5 p-3 space-y-2">
             <div className="flex justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-white break-words">{message.senderName || message.senderEmail}</p><p className="text-[10px] text-slate-400 break-all">{message.senderEmail} · {new Date(message.createdAt).toLocaleString()}</p></div>
-              <button type="button" onClick={() => handleDeleteMessage(message.id)} title="Delete message" aria-label="Delete message" className="p-1 text-red-400"><Trash2 size={15} /></button></div>
+              <button type="button" onClick={() => handleDeleteMessage(message.id)} title={t("Delete message")} aria-label={t("Delete message")} className="p-1 text-red-400"><Trash2 size={15} /></button></div>
             <p className="text-xs text-slate-200 whitespace-pre-wrap break-words">{message.message}</p>
             {(message.replies || []).map(reply => <div key={reply.id} className="ml-3 rounded-lg border-l-2 border-blue-400 bg-blue-500/10 p-2 text-xs">
-              <p className="font-semibold text-blue-300">Reply · {reply.createdBy} · {new Date(reply.createdAt).toLocaleString()}</p>
+              <p className="font-semibold text-blue-300">{t("Reply")} · {reply.createdBy} · {new Date(reply.createdAt).toLocaleString()}</p>
               <p className="mt-1 font-medium text-slate-200 break-words">{reply.title}</p>
               <p className="mt-1 whitespace-pre-wrap break-words text-slate-300">{reply.message}</p>
             </div>)}
-            <button type="button" onClick={() => { setReplyTo(message); setError(''); setMessageRecipient(message.userId); setMessageType('info'); setMessageTitle('Reply'); setMessageBody(''); setIsComposeOpen(true); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Reply</button>
+            <button type="button" onClick={() => { setReplyTo(message); setError(''); setMessageRecipient(message.userId); setMessageType('info'); setMessageTitle(t("Reply")); setMessageBody(''); setIsComposeOpen(true); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">{t("Reply")}</button>
           </div>)}
         </div>
       </Card>
@@ -347,7 +347,7 @@ export const AdminPage = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-300">
             <Bell size={15} />
-            <span>Active Announcements ({notifications.length})</span>
+            <span>{t("Active Announcements")} ({notifications.length})</span>
           </div>
           <button
             onClick={() => {
@@ -357,12 +357,12 @@ export const AdminPage = () => {
             }}
             className="text-xs text-blue-400 hover:text-blue-300 font-semibold"
           >
-            + New Message
+            {t("+ New Message")}
           </button>
         </div>
 
         {notifications.length === 0 ? (
-          <p className="text-xs text-slate-500 py-2">No active announcements or sent messages.</p>
+          <p className="text-xs text-slate-500 py-2">{t("No active announcements or sent messages.")}</p>
         ) : (
           <div className="space-y-2 max-h-56 overflow-y-auto no-scrollbar">
             {notifications.map(n => (
@@ -378,14 +378,14 @@ export const AdminPage = () => {
                       n.type === 'success' ? 'bg-emerald-500/20 text-emerald-300' :
                       'bg-blue-500/20 text-blue-300'
                     }`}>
-                      {n.type}
+                      {t(({ info: "Info", warning: "Warning", alert: "Alert", success: "Update" })[n.type] || n.type)}
                     </span>
                     <span className="font-bold text-white">{n.title}</span>
-                    <span className="text-[10px] text-slate-400">· To: {n.recipientName}</span>
+                    <span className="text-[10px] text-slate-400">· {t("To")}: {n.recipientName}</span>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-relaxed">{n.message}</p>
                   <p className="text-[10px] text-slate-500">
-                    Read by {n.readCount} users • {new Date(n.createdAt).toLocaleDateString()}
+                    {t("Read by {count} users", { count: n.readCount })} • {new Date(n.createdAt).toLocaleDateString()}
                   </p>
                 </div>
 
@@ -393,7 +393,7 @@ export const AdminPage = () => {
                   type="button"
                   onClick={() => handleDeleteNotification(n.id)}
                   className="p-1 text-red-400/60 hover:text-red-400 transition-colors"
-                  title="Recall / Delete Notification"
+                  title={t("Recall / Delete Notification")}
                 >
                   <Trash2 size={14} />
                 </button>
@@ -407,7 +407,7 @@ export const AdminPage = () => {
       <Card className="space-y-3 bg-white/5 border border-white/10">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-purple-300">
           <Settings size={15} />
-          <span>Default Storage Quota</span>
+          <span>{t("Default Storage Quota")}</span>
         </div>
 
         <div className="flex items-center gap-3">
@@ -427,7 +427,7 @@ export const AdminPage = () => {
             disabled={savingDefault}
             className="py-2.5 px-4 bg-purple-600 hover:bg-purple-500 active:scale-95 text-white font-semibold rounded-xl text-xs transition-all shadow-lg disabled:opacity-50"
           >
-            {savingDefault ? 'Saving...' : 'Update Default'}
+            {savingDefault ? t("Saving...") : t("Update Default")}
           </button>
         </div>
       </Card>
@@ -437,7 +437,7 @@ export const AdminPage = () => {
         <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
         <input
           type="text"
-          placeholder="Search user by name or email..."
+          placeholder={t("Search user by name or email...")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full bg-white/5 border border-white/10 rounded-2xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-[var(--primary)] transition-colors"
@@ -447,7 +447,7 @@ export const AdminPage = () => {
       {/* Users Table */}
       <Card className="space-y-4">
         <p className="text-xs font-bold opacity-50 uppercase tracking-widest">
-          Registered Users ({filteredUsers.length})
+          {t("Registered Users")} ({filteredUsers.length})
         </p>
 
         <div className="space-y-3">
@@ -491,7 +491,7 @@ export const AdminPage = () => {
                         e.currentTarget.onerror = null;
                         e.currentTarget.src = '/avatar-robot.png';
                       }}
-                      alt={u.name || 'User'}
+                      alt={u.name || t("User")}
                       className="w-9 h-9 rounded-xl bg-white/10 object-cover"
                     />
                     <div>
@@ -499,19 +499,19 @@ export const AdminPage = () => {
                         <span className="text-sm font-semibold text-white">{u.name}</span>
                         {u.is_admin ? (
                           <span className="px-1.5 py-0.5 text-[9px] bg-purple-500/20 text-purple-300 rounded-md font-bold uppercase">
-                            Admin
+                            {t("Admin")}
                           </span>
                         ) : null}
                         {u.is_banned ? (
                           <span className="px-1.5 py-0.5 text-[9px] bg-red-500/30 text-red-200 border border-red-500/40 rounded-md font-bold uppercase">
-                            Suspended
+                            {t("Suspended")}
                           </span>
                         ) : null}
                       </div>
                       <span className="text-xs text-slate-400 block">{u.email}</span>
                       {u.is_banned && u.ban_reason && (
                         <span className="text-[10px] text-red-300/80 italic block">
-                          Reason: "{u.ban_reason}"
+                          {t("Reason")}: "{u.ban_reason}"
                         </span>
                       )}
                     </div>
@@ -522,7 +522,7 @@ export const AdminPage = () => {
                       {formatBytes(u.totalBytes)} / {userLimitMb} MB
                     </span>
                     <span className="text-[10px] text-slate-500">
-                      {percentUsed}% used
+                      {percentUsed}% {t("used")}
                     </span>
                   </div>
                 </div>
@@ -549,10 +549,10 @@ export const AdminPage = () => {
                         setIsComposeOpen(true);
                       }}
                       className="px-2 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-blue-300 hover:text-blue-200 flex items-center gap-1 transition-all"
-                      title="Send in-app message"
+                      title={t("Send in-app message")}
                     >
                       <MessageSquare size={11} />
-                      <span>Message</span>
+                      <span>{t("Message")}</span>
                     </button>
 
                     {/* Storage Quota Exception */}
@@ -566,10 +566,10 @@ export const AdminPage = () => {
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' 
                           : 'bg-white/5 hover:bg-white/10 text-slate-300'
                       }`}
-                      title="Set custom storage limit"
+                      title={t("Set custom storage limit")}
                     >
                       <Edit3 size={11} />
-                      <span>{u.isCustomLimit ? `${u.storageLimitMb}MB` : 'Limit'}</span>
+                      <span>{u.isCustomLimit ? `${u.storageLimitMb}MB` : t("Limit")}</span>
                     </button>
 
                     {/* Ban / Unban Button */}
@@ -580,10 +580,10 @@ export const AdminPage = () => {
                           onClick={() => handleToggleBan(u, false)}
                           disabled={processingBan}
                           className="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 font-semibold transition-all"
-                          title="Lift suspension"
+                          title={t("Lift suspension")}
                         >
                           <Check size={11} />
-                          <span>Unban</span>
+                          <span>{t("Unban")}</span>
                         </button>
                       ) : (
                         <button
@@ -593,10 +593,10 @@ export const AdminPage = () => {
                             setBanReasonInput('');
                           }}
                           className="px-2 py-1 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/20 flex items-center gap-1 font-semibold transition-all"
-                          title="Suspend account"
+                          title={t("Suspend account")}
                         >
                           <ShieldAlert size={11} />
-                          <span>Ban</span>
+                          <span>{t("Ban")}</span>
                         </button>
                       )
                     )}
@@ -608,7 +608,7 @@ export const AdminPage = () => {
 
           {filteredUsers.length === 0 && (
             <p className="text-center text-xs text-slate-500 py-6">
-              No users found matching "{search}"
+              {t("No users found matching {search}", { search })}
             </p>
           )}
         </div>
@@ -621,7 +621,7 @@ export const AdminPage = () => {
             <div className="flex items-center justify-between text-red-400">
               <div className="flex items-center gap-2">
                 <ShieldAlert size={20} />
-                <h3 className="text-base font-bold text-white">Suspend Account</h3>
+                <h3 className="text-base font-bold text-white">{t("Suspend Account")}</h3>
               </div>
               <button
                 onClick={() => setBanningUser(null)}
@@ -632,17 +632,16 @@ export const AdminPage = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Are you sure you want to suspend <strong className="text-white">{banningUser.name}</strong> ({banningUser.email})? 
-              They will not be able to sync or upload photos until reinstated.
+              {t("Are you sure you want to suspend {name} ({email})? They will not be able to sync or upload photos until reinstated.", { name: banningUser.name, email: banningUser.email })}
             </p>
 
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Reason for suspension (optional)
+                {t("Reason for suspension (optional)")}
               </label>
               <textarea
                 rows={2}
-                placeholder="e.g. Storage quota abuse, policy violation..."
+                placeholder={t("e.g. Storage quota abuse, policy violation...")}
                 value={banReasonInput}
                 onChange={(e) => setBanReasonInput(e.target.value)}
                 className="w-full bg-black/50 border border-white/10 rounded-xl p-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-red-400 resize-none"
@@ -654,14 +653,14 @@ export const AdminPage = () => {
                 onClick={() => setBanningUser(null)}
                 className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-xs text-slate-300 rounded-xl transition-colors"
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 onClick={() => handleToggleBan(banningUser, true)}
                 disabled={processingBan}
                 className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-xl shadow-lg active:scale-95 transition-all"
               >
-                {processingBan ? 'Suspending...' : 'Confirm Ban'}
+                {processingBan ? t("Suspending...") : t("Confirm Ban")}
               </button>
             </div>
           </div>
@@ -679,7 +678,7 @@ export const AdminPage = () => {
               <div className="flex items-center gap-2">
                 <Send size={18} className="text-blue-400" />
                 <h3 className="text-base font-bold">
-                  {replyTo ? 'Reply to User' : messageRecipient === 'all' ? 'Broadcast Announcement' : 'Send Direct Message'}
+                  {replyTo ? t("Reply to User") : messageRecipient === 'all' ? t("Broadcast Announcement") : t("Send Direct Message")}
                 </h3>
               </div>
               <button
@@ -697,7 +696,7 @@ export const AdminPage = () => {
               {/* Recipient Selector */}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Recipient
+                  {t("Recipient")}
                 </label>
                 <select
                   value={messageRecipient}
@@ -705,7 +704,7 @@ export const AdminPage = () => {
                   onChange={(e) => setMessageRecipient(e.target.value)}
                   className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-white outline-none focus:border-blue-400"
                 >
-                  <option value="all">📢 All Users (Broadcast Announcement)</option>
+                  <option value="all">📢 {t("All Users (Broadcast Announcement)")}</option>
                   {(data?.users || []).map(u => (
                     <option key={u.id} value={u.id}>
                       👤 {u.name} ({u.email})
@@ -717,14 +716,14 @@ export const AdminPage = () => {
               {/* Alert Type */}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Notification Type
+                  {t("Notification Type")}
                 </label>
                 <div className="grid grid-cols-4 gap-2">
                   {[
-                    { type: 'info', label: 'Info' },
-                    { type: 'warning', label: 'Warning' },
-                    { type: 'alert', label: 'Alert' },
-                    { type: 'success', label: 'Update' }
+                    { type: 'info', label: t("Info") },
+                    { type: 'warning', label: t("Warning") },
+                    { type: 'alert', label: t("Alert") },
+                    { type: 'success', label: t("Update") }
                   ].map(item => (
                     <button
                       key={item.type}
@@ -745,11 +744,11 @@ export const AdminPage = () => {
               {/* Title Input */}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Title
+                  {t("Title")}
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Scheduled Maintenance, Storage Notice..."
+                  placeholder={t("e.g. Scheduled Maintenance, Storage Notice...")}
                   value={messageTitle}
                   onChange={(e) => setMessageTitle(e.target.value)}
                   className="w-full bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-white outline-none focus:border-blue-400"
@@ -760,11 +759,11 @@ export const AdminPage = () => {
               {/* Message Body */}
               <div>
                 <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                  Message Body
+                  {t("Message Body")}
                 </label>
                 <textarea
                   rows={4}
-                  placeholder="Type the message that will be displayed in the user's app..."
+                  placeholder={t("Type the message that will be displayed in the user's app...")}
                   value={messageBody}
                   onChange={(e) => setMessageBody(e.target.value)}
                   className="w-full bg-black/50 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-blue-400 resize-none leading-relaxed"
@@ -779,7 +778,7 @@ export const AdminPage = () => {
                 onClick={() => setIsComposeOpen(false)}
                 className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-xs text-slate-300 rounded-xl transition-colors"
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="submit"
@@ -787,7 +786,7 @@ export const AdminPage = () => {
                 className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1.5"
               >
                 <Send size={13} />
-                <span>{sendingMessage ? 'Sending...' : 'Send Message'}</span>
+                <span>{sendingMessage ? t("Sending...") : t("Send Message")}</span>
               </button>
             </div>
           </form>
@@ -800,7 +799,7 @@ export const AdminPage = () => {
           <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-white/10 rounded-3xl p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-base font-semibold text-white">
-                Storage Limit for {editingUser.name}
+                {t("Storage Limit for {name}", { name: editingUser.name })}
               </h3>
               <button
                 onClick={() => setEditingUser(null)}
@@ -811,14 +810,14 @@ export const AdminPage = () => {
             </div>
 
             <p className="text-xs text-slate-300">
-              Set a custom limit for this user in MB. Leave blank to inherit the system default ({defaultLimitMb} MB).
+              {t("Set a custom limit for this user in MB. Leave blank to inherit the system default ({value} MB).", { value: defaultLimitMb })}
             </p>
 
             <div className="flex items-center bg-black/40 border border-white/10 rounded-xl px-3 py-2.5">
               <input
                 type="number"
                 min="1"
-                placeholder={`Default (${defaultLimitMb} MB)`}
+                placeholder={t("Default ({value} MB)", { value: defaultLimitMb })}
                 value={customLimitInput}
                 onChange={(e) => setCustomLimitInput(e.target.value)}
                 className="bg-transparent text-white font-semibold text-sm outline-none border-none w-full"
@@ -831,7 +830,7 @@ export const AdminPage = () => {
                 onClick={() => setCustomLimitInput('')}
                 className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-xs text-slate-300 rounded-xl transition-colors"
               >
-                Use Default
+                {t("Use Default")}
               </button>
 
               <button
@@ -839,7 +838,7 @@ export const AdminPage = () => {
                 disabled={savingUserLimit}
                 className="flex-1 py-2.5 bg-[var(--primary)] hover:opacity-90 text-white text-xs font-semibold rounded-xl transition-all"
               >
-                {savingUserLimit ? 'Saving...' : 'Save Limit'}
+                {savingUserLimit ? t("Saving...") : t("Save Limit")}
               </button>
             </div>
           </div>

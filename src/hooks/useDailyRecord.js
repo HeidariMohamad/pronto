@@ -25,15 +25,13 @@ export function useDailyRecord(dateStr = getTodayISO()) {
 
     const activeTargets = semester ? semester.targets : (settings?.targets || []);
     const tolerance = settings?.tolerance ? 10 : 0;
-    const toleranceMode = settings?.toleranceMode || 'exit';
     const isToday = dateStr === getTodayISO();
 
     const stats = calculateDailyStats(
         record?.entries || [],
         activeTargets[dayOfWeek] || [],
         tolerance,
-        isToday,
-        toleranceMode
+        isToday
     );
 
     const addEntry = async (time, type, photo = null) => {
