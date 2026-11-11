@@ -67,15 +67,72 @@ export const AuthProvider = ({ children }) => {
   };
 
   const refreshStorage = async () => {
-    if (!localStorage.getItem('pronto_token')) return;
+    if (!localStorage.getItem('pronto_token')) return null;
     try {
       const data = await api.get('/api/auth/me');
-      if (data.user) setUser(data.user);
+      if (data.user) {
+        setUser(data.user);
+        localStorage.setItem('pronto_user', JSON.stringify(data.user));
+      }
       if (data.storageUsage) setStorageUsage(data.storageUsage);
+      return data.user;
     } catch (err) {
       console.warn('Refresh storage failed:', err);
+      if (err.message?.includes('401') || err.message?.includes('Authentication')) {
+        logout();
+      }
+      return null;
     }
   };
+
+  // Immediate lockdown if any API call encounters suspension
+  useEffect(() => {
+    const handleBanned = (event) => {
+      const detail = event.detail || {};
+      setUser(prev => {
+        if (!prev) return prev;
+        const updated = {
+          ...prev,
+          isBanned: true,
+          banReason: detail.banReason || prev.banReason || ''
+        };
+        localStorage.setItem('pronto_user', JSON.stringify(updated));
+        return updated;
+      });
+    };
+
+    window.addEventListener('pronto:account-banned', handleBanned);
+    return () => window.removeEventListener('pronto:account-banned', handleBanned);
+  }, []);
+
+  // Periodic heartbeat & tab focus check to sync account standing in real time
+  useEffect(() => {
+    if (!user) return;
+
+    const handleFocus = () => {
+      refreshStorage().catch(() => {});
+    };
+
+    window.addEventListener('focus', handleFocus);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshStorage().catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    // If currently banned, poll faster (8s) to detect admin unban quickly
+    // If active user, check every 60s
+    const pollInterval = setInterval(() => {
+      refreshStorage().catch(() => {});
+    }, user.isBanned ? 8000 : 60000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(pollInterval);
+    };
+  }, [user?.id, user?.isBanned]);
 
   useEffect(() => {
     const initAuth = async () => {

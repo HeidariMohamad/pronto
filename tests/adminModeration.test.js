@@ -95,3 +95,36 @@ test('admin notifications and user dismissal', () => {
   const afterDelete = getAllNotifications();
   assert.ok(!afterDelete.some(n => n.id === broadcast.id));
 });
+
+test('notifications endpoint blocks banned users with 403 and banReason', async () => {
+  const bannedUser = upsertUser({
+    id: 'usr_test_banned_notif',
+    google_id: 'gid_test_banned_notif',
+    email: 'banned_notif@pronto.local',
+    name: 'Banned Notif User'
+  });
+  banUser(bannedUser.id, true, 'Account locked by moderator');
+
+  const { generateToken } = await import('../server/routes/auth.js');
+  const { default: notificationsRouter } = await import('../server/routes/notifications.js');
+  const express = (await import('../server/node_modules/express/index.js')).default;
+  const app = express();
+  app.use(express.json());
+  app.use('/api/notifications', notificationsRouter);
+  const server = await new Promise(resolve => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+  });
+  try {
+    const port = server.address().port;
+    const token = generateToken({ id: bannedUser.id, email: bannedUser.email, isAdmin: false });
+    const res = await fetch(`http://127.0.0.1:${port}/api/notifications`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.isBanned, true);
+    assert.equal(body.banReason, 'Account locked by moderator');
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+  }
+});

@@ -72,7 +72,18 @@ export const translations = {
         preferences: 'Preferências',
         target_hours: 'Jornada Diária',
         shift_start: 'Início do Turno',
-        shift_end: 'Fim do Turno'
+        shift_end: 'Fim do Turno',
+        account_suspended: 'Conta Suspensa',
+        account_suspended_badge: 'SUSPENSO',
+        account_suspended_desc: 'Um administrador suspendeu o acesso desta conta. Todas as funcionalidades do aplicativo, registros e sincronização foram bloqueados.',
+        suspension_reason_label: 'Motivo do Administrador',
+        no_suspension_reason: 'Nenhum motivo específico informado.',
+        suspension_contact_note: 'Se você acredita que esta ação foi um equívoco, entre em contato com o administrador.',
+        check_status: 'Verificar status',
+        checking_status: 'Verificando...',
+        sign_out_switch: 'Sair da conta',
+        still_suspended: 'Sua conta ainda permanece suspensa.',
+        account_unbanned_welcome: 'Sua conta foi reativada! Bem-vindo de volta.'
     },
     en: {
         app_name: 'Pronto',
@@ -147,7 +158,18 @@ export const translations = {
         preferences: 'Preferences',
         target_hours: 'Daily Target Hours',
         shift_start: 'Shift Start',
-        shift_end: 'Shift End'
+        shift_end: 'Shift End',
+        account_suspended: 'Account Suspended',
+        account_suspended_badge: 'SUSPENDED',
+        account_suspended_desc: 'An administrator has suspended access to this account. All app features, records, and synchronization are locked.',
+        suspension_reason_label: 'Reason from Administrator',
+        no_suspension_reason: 'No specific reason provided.',
+        suspension_contact_note: 'If you believe this action was taken in error, please contact your administrator.',
+        check_status: 'Check status',
+        checking_status: 'Checking...',
+        sign_out_switch: 'Sign out',
+        still_suspended: 'Your account is still suspended.',
+        account_unbanned_welcome: 'Your account has been reactivated! Welcome back.'
     },
     fa: {
         app_name: 'Pronto',
@@ -222,7 +244,18 @@ export const translations = {
         preferences: 'تنظیمات برگزیده',
         target_hours: 'ساعات هدف روزانه',
         shift_start: 'شروع نوبت',
-        shift_end: 'پایان نوبت'
+        shift_end: 'پایان نوبت',
+        account_suspended: 'حساب کاربری تعلیق شده است',
+        account_suspended_badge: 'تعلیق شده',
+        account_suspended_desc: 'مدیر سیستم دسترسی این حساب را مسدود کرده است. تمام امکانات برنامه، ثبت کارکرد و همگام‌سازی قفل شده‌اند.',
+        suspension_reason_label: 'دلیل ذکر شده توسط مدیر',
+        no_suspension_reason: 'دلیل مشخصی ثبت نشده است.',
+        suspension_contact_note: 'اگر فکر می‌کنید این اقدام اشتباه رخ داده است، لطفاً با مدیر سیستم تماس بگیرید.',
+        check_status: 'بررسی وضعیت',
+        checking_status: 'در حال بررسی...',
+        sign_out_switch: 'خروج از حساب',
+        still_suspended: 'حساب کاربری شما همچنان تعلیق است.',
+        account_unbanned_welcome: 'حساب کاربری شما مجدداً فعال شد! خوش آمدید.'
     }
 };
 

@@ -35,7 +35,13 @@ export function authorizeStoredUpload(req, res, next) {
 router.use(requireAuth, (req, res, next) => {
   const user = getUserById(req.user.id);
   if (!user) return res.status(401).json({ error: 'Account not found' });
-  if (user.is_banned) return res.status(403).json({ error: 'Your account has been suspended by an administrator.' });
+  if (user.is_banned) {
+    return res.status(403).json({ 
+      error: `Your account has been suspended by an administrator${user.ban_reason ? `: "${user.ban_reason}"` : '.'}`,
+      isBanned: true,
+      banReason: user.ban_reason || ''
+    });
+  }
   next();
 });
 

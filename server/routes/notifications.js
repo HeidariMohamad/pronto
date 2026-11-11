@@ -4,8 +4,21 @@ import { getUserNotifications, dismissNotification, getUserById, createSupportMe
 
 const router = Router();
 
+// Middleware to block suspended accounts
+router.use(requireAuth, (req, res, next) => {
+  const user = getUserById(req.user.id);
+  if (user?.is_banned) {
+    return res.status(403).json({
+      error: `Your account has been suspended by an administrator${user.ban_reason ? `: "${user.ban_reason}"` : '.'}`,
+      isBanned: true,
+      banReason: user.ban_reason || ''
+    });
+  }
+  next();
+});
+
 // The sender is taken from the authenticated session, never from the request body.
-router.post('/contact', requireAuth, (req, res) => {
+router.post('/contact', (req, res) => {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
   if (!message || message.length > 4000) return res.status(400).json({ error: 'Message must contain between 1 and 4000 characters.' });
   if (!getUserById(req.user.id)) return res.status(401).json({ error: 'Account not found.' });
@@ -20,7 +33,7 @@ router.post('/contact', requireAuth, (req, res) => {
 });
 
 // Get active notifications for current user (including broadcasts)
-router.get('/', requireAuth, (req, res) => {
+router.get('/', (req, res) => {
   try {
     const list = getUserNotifications(req.user.id);
     const unreadCount = list.filter(n => !n.isRead).length;
@@ -32,7 +45,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // Dismiss / mark notification as read
-router.post('/:id/dismiss', requireAuth, (req, res) => {
+router.post('/:id/dismiss', (req, res) => {
   try {
     dismissNotification(req.params.id, req.user.id);
     res.json({ success: true, notificationId: req.params.id });

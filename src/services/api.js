@@ -9,6 +9,12 @@ function getAuthHeader() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function handleForbiddenSuspension(res, err) {
+  if (res.status === 403 && (err?.isBanned || err?.error?.toLowerCase().includes('suspend') || err?.error?.toLowerCase().includes('banned'))) {
+    window.dispatchEvent(new CustomEvent('pronto:account-banned', { detail: err }));
+  }
+}
+
 export const api = {
   async get(endpoint) {
     const res = await fetch(`${API_BASE}${endpoint}`, {
@@ -22,6 +28,7 @@ export const api = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }));
+      handleForbiddenSuspension(res, err);
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
@@ -41,6 +48,7 @@ export const api = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }));
+      handleForbiddenSuspension(res, err);
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
@@ -60,6 +68,7 @@ export const api = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }));
+      handleForbiddenSuspension(res, err);
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 
@@ -72,6 +81,7 @@ export const api = {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Request failed' }));
+      handleForbiddenSuspension(res, err);
       throw new Error(err.error || `HTTP ${res.status}`);
     }
     return res.json();
@@ -92,6 +102,7 @@ export const api = {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+      handleForbiddenSuspension(res, err);
       throw new Error(err.error || `HTTP ${res.status}`);
     }
 

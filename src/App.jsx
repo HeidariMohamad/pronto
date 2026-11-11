@@ -11,9 +11,10 @@ import { AdminPage } from './pages/Admin';
 import { SplashScreen } from './components/SplashScreen';
 import { LoginModal } from './components/LoginModal';
 import { MigrationProgressModal } from './components/MigrationProgressModal';
+import { AccountSuspendedScreen } from './components/AccountSuspendedScreen';
 
 function AppRoutes() {
-  const { isAuthenticated, loading: authLoading, needsMigration } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, needsMigration, logout, refreshStorage } = useAuth();
   const [splashFinished, setSplashFinished] = useState(false);
   const location = useLocation();
   const previousPageRef = useRef(location.pathname);
@@ -30,6 +31,17 @@ function AppRoutes() {
   // Mandatory Login Gate
   if (!isAuthenticated && !authLoading) {
     return <LoginModal />;
+  }
+
+  // Account Suspension Lockdown: blocks access to the entire app
+  if (user?.isBanned) {
+    return (
+      <AccountSuspendedScreen 
+        user={user} 
+        onLogout={logout} 
+        onCheckStatus={refreshStorage} 
+      />
+    );
   }
 
   return (
