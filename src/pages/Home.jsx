@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDailyRecord } from '../hooks/useDailyRecord';
 import { M2T, formatDurationHM, groupEntriesIntoSessions } from '../services/stats';
@@ -17,17 +17,20 @@ import { useTranslation } from '../hooks/useTranslation';
 import { formatPunchType } from '../services/i18n';
 import { toLocalISOString } from '../services/db';
 import { api } from '../services/api';
+import { optimizeImage } from '../services/imageOptimizer';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
-import { CameraCaptureModal } from '../components/CameraCaptureModal';
 
 export const HomePage = () => {
     const [activeDate, setActiveDate] = useState(new Date());
-    const { record, settings, stats, addEntry, updateEntry, deleteEntry, updateNote } = useDailyRecord(toLocalISOString(activeDate));
+    const { record, stats, addEntry, updateEntry, deleteEntry, updateNote } = useDailyRecord(toLocalISOString(activeDate));
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [entryToDelete, setEntryToDelete] = useState(null);
     const [selectedImage, setSelectedImage] = useState(null);
     const [editingTimePicker, setEditingTimePicker] = useState(null);
-    const [capturingCameraEntryId, setCapturingCameraEntryId] = useState(null);
+    const cameraInputRef = useRef(null);
+    const cameraEntryRef = useRef(null);
+    const [processingPhoto, setProcessingPhoto] = useState(false);
+    const [photoMessage, setPhotoMessage] = useState('');
     const [collapsedTurns, setCollapsedTurns] = useState({});
     const { t, lang } = useTranslation();
 
@@ -48,23 +51,41 @@ export const HomePage = () => {
         addEntry(time, type);
     };
 
-    const handleProcessAndSavePhoto = async (photo, entryId) => {
-        if (!photo?.blob || !photo?.dataUrl || !entryId) return;
+    const openPhoneCamera = (entryId) => {
+        cameraEntryRef.current = entryId;
+        cameraInputRef.current?.click();
+    };
 
+    const handlePhonePhoto = async (event) => {
+        const file = event.target.files?.[0];
+        const entryId = cameraEntryRef.current;
+        event.target.value = '';
+        cameraEntryRef.current = null;
+        if (!file || !entryId) return;
+        setProcessingPhoto(true);
+        setPhotoMessage(t('photo_processing'));
         try {
-            const { blob, dataUrl } = photo;
+            const { blob, dataUrl } = await optimizeImage(file, 1600, 0.88, true);
             await updateEntry(entryId, 'photo', dataUrl);
-
             if (navigator.onLine && localStorage.getItem('pronto_token')) {
-                const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/png' ? 'png' : 'webp';
-                const fileName = `punch_${entryId}.${extension}`;
-                const uploadRes = await api.uploadPhoto(blob, fileName);
-                if (uploadRes?.url) {
+                try {
+                    const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/png' ? 'png' : 'webp';
+                    const uploadRes = await api.uploadPhoto(blob, `punch_${entryId}.${extension}`);
+                    if (!uploadRes?.url) throw new Error('Upload returned no photo URL');
                     await updateEntry(entryId, 'photo', uploadRes.url);
+                    setPhotoMessage('');
+                } catch (err) {
+                    console.warn('Photo saved locally; upload failed:', err);
+                    setPhotoMessage(t('photo_saved_locally'));
                 }
+            } else {
+                setPhotoMessage(t('photo_saved_locally'));
             }
         } catch (err) {
-            console.error('Failed to process and upload photo:', err);
+            console.error('Failed to process photo:', err);
+            setPhotoMessage(t('photo_failed'));
+        } finally {
+            setProcessingPhoto(false);
         }
     };
 
@@ -103,6 +124,7 @@ export const HomePage = () => {
 
     return (
         <div className="space-y-4 pb-28 animate-fade-in">
+            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhonePhoto} onCancel={() => { cameraEntryRef.current = null; }} />
             <div className="space-y-2">
             {/* Date Switcher */}
             <div className="home-date-switcher text-center space-y-0.5">
@@ -201,6 +223,8 @@ export const HomePage = () => {
             </div>
             </div>
 
+            {photoMessage && <p role="status" aria-live="polite" className="text-center text-xs text-slate-300">{photoMessage}</p>}
+
             {/* Timeline: Grouped Sessions (Turnos) & Breaks (Intervalos) */}
             <div className="space-y-3">
                 {timelineItems.map((item) => {
@@ -291,9 +315,11 @@ export const HomePage = () => {
                                                 ) : (
                                                     <button 
                                                         type="button"
-                                                        onClick={() => setCapturingCameraEntryId(item.inEntry.id)}
-                                                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all"
-                                                        title={t('take_photo') || 'Take photo (1:1)'}
+                                                        onClick={() => openPhoneCamera(item.inEntry.id)}
+                                                        disabled={processingPhoto}
+                                                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all disabled:opacity-40"
+                                                        title={t('take_photo')}
+                                                        aria-label={t('take_photo')}
                                                     >
                                                         <Camera size={13} />
                                                     </button>
@@ -338,9 +364,11 @@ export const HomePage = () => {
                                                 ) : (
                                                     <button 
                                                         type="button"
-                                                        onClick={() => setCapturingCameraEntryId(item.outEntry.id)}
-                                                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all"
-                                                        title={t('take_photo') || 'Take photo (1:1)'}
+                                                        onClick={() => openPhoneCamera(item.outEntry.id)}
+                                                        disabled={processingPhoto}
+                                                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all disabled:opacity-40"
+                                                        title={t('take_photo')}
+                                                        aria-label={t('take_photo')}
                                                     >
                                                         <Camera size={13} />
                                                     </button>
@@ -438,17 +466,6 @@ export const HomePage = () => {
                     }
                 }}
                 onClose={() => setEditingTimePicker(null)}
-            />
-
-            {/* 1:1 Aspect Ratio Camera Capture Modal */}
-            <CameraCaptureModal
-                isOpen={!!capturingCameraEntryId}
-                onCapture={(fileOrBlob) => {
-                    if (capturingCameraEntryId) {
-                        handleProcessAndSavePhoto(fileOrBlob, capturingCameraEntryId);
-                    }
-                }}
-                onClose={() => setCapturingCameraEntryId(null)}
             />
 
         </div>
