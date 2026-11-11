@@ -14,6 +14,7 @@ import { formatPunchType } from '../services/i18n';
 import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
+import { version as appVersion } from '../../package.json';
 
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
@@ -360,26 +361,67 @@ export const SettingsPage = () => {
                         const limitMb = storageUsage?.storageLimitMb || 50;
                         const limitBytes = storageUsage?.storageLimitBytes || (limitMb * 1024 * 1024);
                         const totalBytes = storageUsage?.totalBytes || 0;
-                        const percent = Math.min(100, Math.max(1, (totalBytes / limitBytes) * 100));
+                        const rawPercent = limitBytes > 0 ? (totalBytes / limitBytes) * 100 : 0;
+                        const percent = Math.min(100, Math.max(1, rawPercent));
+                        const isFull = rawPercent >= 100;
+                        const isCritical = rawPercent >= 90;
+                        const isWarning = rawPercent >= 75 && rawPercent < 90;
+
+                        const barColor = isFull || isCritical
+                            ? 'bg-gradient-to-r from-red-600 via-rose-500 to-red-500 shadow-[0_0_12px_rgba(244,63,94,0.8)] animate-pulse'
+                            : isWarning
+                            ? 'bg-gradient-to-r from-amber-500 to-yellow-400 shadow-[0_0_10px_rgba(251,191,36,0.6)]'
+                            : 'bg-gradient-to-r from-blue-500 to-indigo-500';
+
+                        const textColor = isFull || isCritical
+                            ? 'text-rose-400 font-bold'
+                            : isWarning
+                            ? 'text-amber-400 font-bold'
+                            : 'text-[var(--primary)] font-semibold';
 
                         return (
-                            <div className="bg-white/5 p-3 rounded-xl space-y-2 border border-white/5">
+                            <div className="bg-white/5 p-3.5 rounded-2xl space-y-2.5 border border-white/5">
                                 <div className="flex justify-between items-center text-xs">
                                     <div className="flex items-center gap-1.5 opacity-80">
-                                        <HardDrive size={13} className="text-[var(--primary)]" />
+                                        <HardDrive size={13} className={textColor} />
                                         <span>{t('storage_used')}</span>
+                                        {isFull ? (
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-red-300 bg-red-500/20 px-1.5 py-0.5 rounded border border-red-500/30">
+                                                Full
+                                            </span>
+                                        ) : isWarning ? (
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                                                90%+
+                                            </span>
+                                        ) : null}
                                     </div>
-                                    <span className="font-semibold text-[var(--primary)]">
+                                    <span className={textColor}>
                                         {formatBytes(totalBytes)} / {limitMb} MB
                                     </span>
                                 </div>
 
-                                <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden">
+                                <div className="w-full h-2.5 bg-black/50 rounded-full overflow-hidden p-0.5">
                                     <div
-                                        className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
+                                        className={`h-full rounded-full transition-all duration-500 ${barColor}`}
                                         style={{ width: `${percent}%` }}
                                     />
                                 </div>
+
+                                {/* Quota Full Warning Alert Box */}
+                                {isCritical && (
+                                    <div className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                                        isFull ? 'bg-red-500/20 border-red-500/40 text-red-200' : 'bg-amber-500/15 border-amber-500/30 text-amber-200'
+                                    }`}>
+                                        <div className="flex items-center gap-2">
+                                            <AlertTriangle size={15} className={isFull ? 'text-red-400 shrink-0' : 'text-amber-400 shrink-0'} />
+                                            <span className="text-[11px] font-medium leading-tight">
+                                                {isFull 
+                                                    ? 'Storage limit reached! Cloud syncing is paused until space is freed.' 
+                                                    : 'Storage is almost full! Consider cleaning up photos in Cloud Storage.'}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
 
                                 <div className="flex justify-between text-[10px] opacity-60 pt-0.5">
                                     <span>{storageUsage ? `${t('records_label')}: ${formatBytes(storageUsage.dbBytes || 0)} (${storageUsage.recordsCount || 0} ${t('days_label')})` : t('cloud_unavailable')}</span>
@@ -595,7 +637,7 @@ export const SettingsPage = () => {
                         </div>
                     </a>
                 </div>
-                <p className="text-sm font-medium opacity-80 mt-4">v0.1.0 • Made with ☕ and 🍰</p>
+                <p className="text-sm font-medium opacity-80 mt-4">v{appVersion} • Made with ☕ and 🍰</p>
             </div>
         </div>
     );

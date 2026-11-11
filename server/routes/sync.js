@@ -75,6 +75,15 @@ router.post('/push', requireAuth, (req, res) => {
       if (settings) {
         upsertSettings(userId, settings, settings.updatedAt || Date.now());
       }
+
+      // STRICT QUOTA ENFORCEMENT: Rollback and reject if user exceeds storage limit
+      const currentUsage = getStorageUsage(userId);
+      if (currentUsage.totalBytes > currentUsage.storageLimitBytes) {
+        const error = new Error(`Cloud storage limit exceeded: ${(currentUsage.totalBytes / (1024 * 1024)).toFixed(1)} MB used, but your account limit is ${currentUsage.storageLimitMb} MB.`);
+        error.code = 'QUOTA_EXCEEDED';
+        error.storageUsage = currentUsage;
+        throw error;
+      }
     });
 
     const storageUsage = getStorageUsage(userId);
@@ -87,6 +96,13 @@ router.post('/push', requireAuth, (req, res) => {
   } catch (err) {
     console.error('Sync push error:', err);
     if (err.code === 'DELETED_ITEM_CONFLICT') return res.status(409).json({ error: err.message });
+    if (err.code === 'QUOTA_EXCEEDED') {
+      return res.status(413).json({ 
+        error: err.message, 
+        code: 'QUOTA_EXCEEDED', 
+        storageUsage: err.storageUsage 
+      });
+    }
     res.status(500).json({ error: 'Failed to push sync data' });
   }
 });
@@ -113,6 +129,15 @@ router.post('/migrate', requireAuth, (req, res) => {
       if (settings) {
         upsertSettings(userId, settings, settings.updatedAt || Date.now());
       }
+
+      // STRICT QUOTA ENFORCEMENT for initial migration as well
+      const currentUsage = getStorageUsage(userId);
+      if (currentUsage.totalBytes > currentUsage.storageLimitBytes) {
+        const error = new Error(`Cloud storage limit exceeded: ${(currentUsage.totalBytes / (1024 * 1024)).toFixed(1)} MB used, but your account limit is ${currentUsage.storageLimitMb} MB.`);
+        error.code = 'QUOTA_EXCEEDED';
+        error.storageUsage = currentUsage;
+        throw error;
+      }
     });
 
     const storageUsage = getStorageUsage(userId);
@@ -125,6 +150,13 @@ router.post('/migrate', requireAuth, (req, res) => {
   } catch (err) {
     console.error('Migration error:', err);
     if (err.code === 'DELETED_ITEM_CONFLICT') return res.status(409).json({ error: err.message });
+    if (err.code === 'QUOTA_EXCEEDED') {
+      return res.status(413).json({ 
+        error: err.message, 
+        code: 'QUOTA_EXCEEDED', 
+        storageUsage: err.storageUsage 
+      });
+    }
     res.status(500).json({ error: 'Failed to migrate data to server' });
   }
 });

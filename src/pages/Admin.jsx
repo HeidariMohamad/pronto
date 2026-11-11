@@ -421,6 +421,22 @@ export const AdminPage = () => {
             const userLimitBytes = userLimitMb * 1024 * 1024;
             const percentUsed = Math.min(100, Math.round(((u.totalBytes || 0) / userLimitBytes) * 100));
             const isSelf = u.id === user?.id;
+            const isCritical = percentUsed >= 90;
+            const isWarning = percentUsed >= 75 && percentUsed < 90;
+
+            const barColor = u.is_banned 
+              ? 'bg-red-500' 
+              : isCritical 
+              ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)] animate-pulse'
+              : isWarning 
+              ? 'bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.6)]'
+              : 'bg-[var(--primary)]';
+
+            const statusColor = isCritical 
+              ? 'text-red-400' 
+              : isWarning 
+              ? 'text-amber-400' 
+              : 'text-[var(--primary)]';
 
             return (
               <div
@@ -467,7 +483,7 @@ export const AdminPage = () => {
                   </div>
 
                   <div className="text-right">
-                    <span className="text-xs font-bold text-[var(--primary)] block">
+                    <span className={`text-xs font-bold block ${statusColor}`}>
                       {formatBytes(u.totalBytes)} / {userLimitMb} MB
                     </span>
                     <span className="text-[10px] text-slate-500">
@@ -479,9 +495,7 @@ export const AdminPage = () => {
                 {/* Progress bar */}
                 <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-300 ${
-                      u.is_banned ? 'bg-red-500' : 'bg-[var(--primary)]'
-                    }`}
+                    className={`h-full rounded-full transition-all duration-300 ${barColor}`}
                     style={{ width: `${Math.max(2, percentUsed)}%` }}
                   />
                 </div>

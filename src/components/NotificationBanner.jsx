@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
-import { Info, AlertTriangle, AlertCircle, CheckCircle, X, ShieldAlert } from 'lucide-react';
+import { Info, AlertTriangle, AlertCircle, CheckCircle, X, ShieldAlert, HardDrive } from 'lucide-react';
 
 export function NotificationBanner() {
-  const { user } = useAuth();
+  const { user, storageUsage } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [dismissedQuotaAlert, setDismissedQuotaAlert] = useState(false);
 
   const fetchNotifications = async () => {
     if (!user || !localStorage.getItem('pronto_token')) return;
@@ -14,7 +17,6 @@ export function NotificationBanner() {
       setLoading(true);
       const res = await api.get('/api/notifications');
       if (res?.notifications) {
-        // Show unread ones first
         setNotifications(res.notifications.filter(n => !n.isRead));
       }
     } catch (err) {
@@ -26,13 +28,11 @@ export function NotificationBanner() {
 
   useEffect(() => {
     fetchNotifications();
-    // Periodically check for new announcements every 2 minutes
     const interval = setInterval(fetchNotifications, 120000);
     return () => clearInterval(interval);
   }, [user?.id]);
 
   const handleDismiss = async (id) => {
-    // Optimistic UI update
     setNotifications(prev => prev.filter(n => n.id !== id));
     try {
       await api.post(`/api/notifications/${id}/dismiss`);
@@ -40,6 +40,8 @@ export function NotificationBanner() {
       console.warn('Failed to dismiss notification:', err);
     }
   };
+
+  const isStorageFull = storageUsage?.storageLimitBytes > 0 && storageUsage.totalBytes >= storageUsage.storageLimitBytes;
 
   const getTypeStyle = (type) => {
     switch (type) {
@@ -67,10 +69,46 @@ export function NotificationBanner() {
     }
   };
 
-  if (!user?.isBanned && notifications.length === 0) return null;
+  if (!user?.isBanned && !isStorageFull && notifications.length === 0) return null;
 
   return (
-    <div className="w-full space-y-2">
+    <div className="w-full space-y-2 select-none">
+      {/* Storage Quota Full Alert */}
+      {isStorageFull && !dismissedQuotaAlert && (
+        <div className="w-full rounded-2xl p-3 bg-red-600/20 border border-red-500/40 text-red-200 shadow-xl backdrop-blur-md flex items-start justify-between gap-3 animate-in fade-in">
+          <div className="flex items-start gap-2.5 flex-1">
+            <HardDrive size={18} className="text-rose-400 shrink-0 mt-0.5 animate-pulse" />
+            <div className="space-y-0.5 text-xs">
+              <p className="font-bold text-red-100 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                <span>Cloud Storage Full</span>
+                <span className="text-[10px] bg-red-500/30 px-1 rounded font-mono">
+                  {Math.round(storageUsage.totalBytes / (1024 * 1024))} MB / {storageUsage.storageLimitMb} MB
+                </span>
+              </p>
+              <p className="opacity-90 leading-relaxed text-[11px]">
+                You have reached your cloud storage quota. Syncing and photo uploads are paused.
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate('/settings')}
+                className="mt-1 text-[11px] font-bold text-white underline hover:text-red-200 block"
+              >
+                Manage Cloud Storage →
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setDismissedQuotaAlert(true)}
+            className="p-1 text-slate-300 hover:text-white shrink-0"
+            title="Dismiss alert"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       {/* Account Suspended / Banned Notice */}
       {user?.isBanned && (
         <div className="w-full rounded-2xl p-3.5 bg-red-500/20 border border-red-500/40 text-red-200 shadow-xl backdrop-blur-md flex items-start gap-3 animate-in fade-in">

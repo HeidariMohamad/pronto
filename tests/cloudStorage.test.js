@@ -17,7 +17,7 @@ const { generateToken, requireAuth } = await import('../server/routes/auth.js');
 const { default: storage, authorizeStoredUpload } = await import('../server/routes/storage.js');
 const { default: sync } = await import('../server/routes/sync.js');
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
 app.use('/api/storage', storage);
 app.use('/api/sync', sync);
@@ -148,4 +148,30 @@ test('batch delete and mass cleanup endpoints work reliably', async () => {
   const allRes = await request(user, '/api/storage/delete-batch', { deleteAll: 'all' });
   assert.equal(allRes.status, 200);
   assert.equal(getRecords(user).length, 0);
+});
+
+test('sync push strictly blocks uploads that exceed user storage quota', async () => {
+  const user = 'user-a';
+  // Set custom 1 MB storage limit
+  db.prepare('UPDATE users SET storage_limit_mb = 1 WHERE id = ?').run(user);
+
+  // Attempt to sync a record payload larger than 1 MB (e.g. 1.5 MB string)
+  const hugePayload = {
+    records: [{
+      date: '2026-05-01',
+      entries: [{ type: 'In', time: '08:00', photo: 'data:image/png;base64,' + 'A'.repeat(1500000) }],
+      note: 'huge photo',
+      updatedAt: 1
+    }]
+  };
+
+  const pushRes = await request(user, '/api/sync/push', hugePayload);
+  assert.equal(pushRes.status, 413);
+  assert.equal(pushRes.data.code, 'QUOTA_EXCEEDED');
+
+  // Verify the oversized record was rolled back and NOT saved
+  assert.equal(getRecords(user).some(r => r.date === '2026-05-01'), false);
+
+  // Reset limit
+  db.prepare('UPDATE users SET storage_limit_mb = NULL WHERE id = ?').run(user);
 });

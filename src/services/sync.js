@@ -6,9 +6,10 @@ let currentStatus = 'idle'; // 'idle' | 'syncing' | 'offline' | 'error'
 let activeSync = null;
 let syncPauseCount = 0;
 const SYNC_PAUSED = Symbol('sync paused');
-const BATCH_BYTES = 8 * 1024 * 1024;
+const BATCH_BYTES = 1.5 * 1024 * 1024; // 1.5 MB per batch for smooth progressive upload
+const MAX_BATCH_ITEMS = 15; // Max 15 items per batch so progress bar updates frequently
 
-// Keep requests small even when old records contain embedded photos.
+// Keep requests responsive with progressive batch feedback
 async function pushBatches(items, onBatch) {
   let batch = [];
   let size = 0;
@@ -27,12 +28,12 @@ async function pushBatches(items, onBatch) {
 
   for (const item of items) {
     const itemSize = new Blob([JSON.stringify(item.value)]).size + 128;
-    if (batch.length && (size + itemSize > BATCH_BYTES || (item.collection === 'settings' && batch.some(i => i.collection === 'settings')))) {
+    if (batch.length && (batch.length >= MAX_BATCH_ITEMS || size + itemSize > BATCH_BYTES || (item.collection === 'settings' && batch.some(i => i.collection === 'settings')))) {
       await flush();
     }
     batch.push(item);
     size += itemSize;
-    if (size >= BATCH_BYTES) await flush();
+    if (batch.length >= MAX_BATCH_ITEMS || size >= BATCH_BYTES) await flush();
   }
   await flush();
 }
@@ -187,7 +188,7 @@ export async function migrateLocalHistory(onProgress) {
 
   await pushBatches(allRecords.map(value => ({ collection: 'records', value })), async (batch) => {
     completed += batch.length;
-    const percent = Math.min(90, Math.round((completed / totalSteps) * 100));
+    const percent = Math.min(92, Math.max(8, Math.round((completed / (allRecords.length || 1)) * 88)));
     if (onProgress) {
       onProgress({
         percent,
