@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useDailyRecord } from '../hooks/useDailyRecord';
 import { M2T, formatDurationHM, groupEntriesIntoSessions } from '../services/stats';
 import { 
@@ -17,6 +18,7 @@ import { toLocalISOString } from '../services/db';
 import { optimizeImage } from '../services/imageOptimizer';
 import { api } from '../services/api';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
+import { CameraCaptureModal } from '../components/CameraCaptureModal';
 
 export const HomePage = () => {
     const [activeDate, setActiveDate] = useState(new Date());
@@ -25,6 +27,7 @@ export const HomePage = () => {
     const [entryToDelete, setEntryToDelete] = useState(null);
     const [selectedImage, setSelectedImage] = useState(null);
     const [editingTimePicker, setEditingTimePicker] = useState(null);
+    const [capturingCameraEntryId, setCapturingCameraEntryId] = useState(null);
     const [collapsedTurns, setCollapsedTurns] = useState({});
     const { t, lang } = useTranslation();
 
@@ -45,16 +48,17 @@ export const HomePage = () => {
         addEntry(time, type);
     };
 
-    const handlePhoto = async (e, entryId) => {
-        const file = e.target.files[0];
-        if (!file) return;
+    const handleProcessAndSavePhoto = async (fileOrBlob, entryId) => {
+        if (!fileOrBlob || !entryId) return;
 
         try {
-            const { blob, dataUrl } = await optimizeImage(file, 800, 0.65);
+            // 1:1 square crop guaranteed
+            const { blob, dataUrl } = await optimizeImage(fileOrBlob, 800, 0.65, true);
             await updateEntry(entryId, 'photo', dataUrl);
 
             if (navigator.onLine && localStorage.getItem('pronto_token')) {
-                const uploadRes = await api.uploadPhoto(blob, file.name);
+                const fileName = fileOrBlob.name || `punch_${entryId}.webp`;
+                const uploadRes = await api.uploadPhoto(blob, fileName);
                 if (uploadRes?.url) {
                     await updateEntry(entryId, 'photo', uploadRes.url);
                 }
@@ -280,20 +284,18 @@ export const HomePage = () => {
                                                     <img
                                                         src={item.inEntry.photo}
                                                         alt="Punch"
-                                                        className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20"
+                                                        className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20 active:scale-95 transition-transform"
                                                         onClick={() => setSelectedImage(item.inEntry.photo)}
                                                     />
                                                 ) : (
-                                                    <label className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 border border-white/10 cursor-pointer transition-colors">
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setCapturingCameraEntryId(item.inEntry.id)}
+                                                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all"
+                                                        title={t('take_photo') || 'Take photo (1:1)'}
+                                                    >
                                                         <Camera size={13} />
-                                                        <input 
-                                                            type="file" 
-                                                            accept="image/*" 
-                                                            capture="environment" 
-                                                            className="hidden" 
-                                                            onChange={(e) => handlePhoto(e, item.inEntry.id)} 
-                                                        />
-                                                    </label>
+                                                    </button>
                                                 )}
 
                                                 <button
@@ -329,20 +331,18 @@ export const HomePage = () => {
                                                     <img
                                                         src={item.outEntry.photo}
                                                         alt="Punch"
-                                                        className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20"
+                                                        className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20 active:scale-95 transition-transform"
                                                         onClick={() => setSelectedImage(item.outEntry.photo)}
                                                     />
                                                 ) : (
-                                                    <label className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 border border-white/10 cursor-pointer transition-colors">
+                                                    <button 
+                                                        type="button"
+                                                        onClick={() => setCapturingCameraEntryId(item.outEntry.id)}
+                                                        className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all"
+                                                        title={t('take_photo') || 'Take photo (1:1)'}
+                                                    >
                                                         <Camera size={13} />
-                                                        <input 
-                                                            type="file" 
-                                                            accept="image/*" 
-                                                            capture="environment" 
-                                                            className="hidden" 
-                                                            onChange={(e) => handlePhoto(e, item.outEntry.id)} 
-                                                        />
-                                                    </label>
+                                                    </button>
                                                 )}
 
                                                 <button
@@ -380,7 +380,7 @@ export const HomePage = () => {
             </div>
 
             {/* Delete Confirmation Modal */}
-            {isDeleteModalOpen && (
+            {isDeleteModalOpen && createPortal(
                 <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
                     <div className="theme-card p-5 w-full max-w-xs space-y-4 shadow-2xl">
                         <div className="flex justify-between items-center">
@@ -405,11 +405,11 @@ export const HomePage = () => {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>, document.body
             )}
 
             {/* Photo Zoom Modal */}
-            {selectedImage && (
+            {selectedImage && createPortal(
                 <div 
                     onClick={() => setSelectedImage(null)}
                     className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg cursor-pointer"
@@ -423,7 +423,7 @@ export const HomePage = () => {
                             <X size={18} />
                         </button>
                     </div>
-                </div>
+                </div>, document.body
             )}
 
             {/* iOS Action-Sheet Style Time Picker Modal */}
@@ -437,6 +437,17 @@ export const HomePage = () => {
                     }
                 }}
                 onClose={() => setEditingTimePicker(null)}
+            />
+
+            {/* 1:1 Aspect Ratio Camera Capture Modal */}
+            <CameraCaptureModal
+                isOpen={!!capturingCameraEntryId}
+                onCapture={(fileOrBlob) => {
+                    if (capturingCameraEntryId) {
+                        handleProcessAndSavePhoto(fileOrBlob, capturingCameraEntryId);
+                    }
+                }}
+                onClose={() => setCapturingCameraEntryId(null)}
             />
 
         </div>

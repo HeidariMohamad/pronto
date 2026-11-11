@@ -3,28 +3,43 @@
  * Resizes and compresses photos before uploading to save storage & bandwidth.
  */
 
-export async function optimizeImage(source, maxDimension = 800, quality = 0.65) {
+export async function optimizeImage(source, maxDimension = 800, quality = 0.65, cropSquare = true) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     let objectUrl = null;
 
     img.onload = () => {
       try {
-        let { width, height } = img;
+        let sx = 0;
+        let sy = 0;
+        let sWidth = img.width;
+        let sHeight = img.height;
 
-        if (width > maxDimension || height > maxDimension) {
-          if (width > height) {
-            height = Math.round((height * maxDimension) / width);
-            width = maxDimension;
+        // Crop to perfect 1:1 center square if enabled
+        if (cropSquare) {
+          const minDim = Math.min(img.width, img.height);
+          sx = Math.round((img.width - minDim) / 2);
+          sy = Math.round((img.height - minDim) / 2);
+          sWidth = minDim;
+          sHeight = minDim;
+        }
+
+        let targetWidth = sWidth;
+        let targetHeight = sHeight;
+
+        if (targetWidth > maxDimension || targetHeight > maxDimension) {
+          if (targetWidth >= targetHeight) {
+            targetHeight = Math.round((targetHeight * maxDimension) / targetWidth);
+            targetWidth = maxDimension;
           } else {
-            width = Math.round((width * maxDimension) / height);
-            height = maxDimension;
+            targetWidth = Math.round((targetWidth * maxDimension) / targetHeight);
+            targetHeight = maxDimension;
           }
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
 
         const ctx = canvas.getContext('2d');
         if (!ctx) {
@@ -33,8 +48,8 @@ export async function optimizeImage(source, maxDimension = 800, quality = 0.65) 
 
         // Draw image smoothly
         ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'medium';
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, targetWidth, targetHeight);
 
         // Try WebP first, fallback to JPEG
         const tryExport = (type) => {

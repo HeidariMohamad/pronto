@@ -243,7 +243,7 @@ export function deleteRecord(userId, date) {
 export function getSemesters(userId) {
   const rows = db.prepare('SELECT id, name, start_date, end_date, targets, updated_at FROM semesters WHERE user_id = ?').all(userId);
   return rows.map(s => ({
-    id: s.id,
+    id: s.id.startsWith(`${userId}:`) ? s.id.slice(userId.length + 1) : s.id,
     name: s.name,
     startDate: s.start_date,
     endDate: s.end_date,
@@ -254,6 +254,10 @@ export function getSemesters(userId) {
 
 export function upsertSemester(userId, { id, name, startDate, endDate, targets, updatedAt }) {
   const targetsStr = typeof targets === 'string' ? targets : JSON.stringify(targets || []);
+  // Older rows used globally shared numeric IDs; keep those for their owner,
+  // but give new rows an account-scoped key so two users cannot overwrite each other.
+  const legacy = db.prepare('SELECT id FROM semesters WHERE id = ? AND user_id = ?').get(String(id), userId);
+  const storedId = legacy ? legacy.id : `${userId}:${id}`;
   const stmt = db.prepare(`
     INSERT INTO semesters (id, user_id, name, start_date, end_date, targets, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -264,11 +268,11 @@ export function upsertSemester(userId, { id, name, startDate, endDate, targets, 
       targets = excluded.targets,
       updated_at = excluded.updated_at
   `);
-  stmt.run(String(id), userId, name, startDate, endDate, targetsStr, updatedAt || Date.now());
+  stmt.run(storedId, userId, name, startDate, endDate, targetsStr, updatedAt || Date.now());
 }
 
 export function deleteSemester(userId, id) {
-  db.prepare('DELETE FROM semesters WHERE user_id = ? AND id = ?').run(userId, String(id));
+  db.prepare('DELETE FROM semesters WHERE user_id = ? AND (id = ? OR id = ?)').run(userId, String(id), `${userId}:${id}`);
 }
 
 // Settings

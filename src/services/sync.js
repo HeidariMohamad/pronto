@@ -76,11 +76,11 @@ export function triggerSync() {
 
 async function performSync() {
   const token = localStorage.getItem('pronto_token');
-  if (!token) return;
+  if (!token) throw new Error('Sign in before syncing');
 
   if (!navigator.onLine) {
     setSyncStatus('offline');
-    return;
+    throw new Error('Connect to the internet before syncing');
   }
 
   setSyncStatus('syncing');

@@ -8,6 +8,9 @@ import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Spa
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { triggerSync, queueSync } from '../services/sync';
+import { api } from '../services/api';
+import { prepareMerge, sameSourceSnapshot } from '../services/mergeData';
+import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 
 // Time Range Input Component (Start - End)
@@ -159,19 +162,87 @@ export const SettingsPage = () => {
 
     const [backupMsg, setBackupMsg] = useState('');
     const [syncingNow, setSyncingNow] = useState(false);
+    const [mergeReview, setMergeReview] = useState(null);
 
-    const handleSyncNow = async () => {
+    const finishMerge = async (plan, selections) => {
         setSyncingNow(true);
         try {
+            // Another tab or device may have changed data while the review was open.
+            const cloud = await api.get('/api/sync/pull');
+            const device = {
+                records: await db.records.toArray(),
+                semesters: await db.semesters.toArray(),
+                settings: await db.settings.get('v8')
+            };
+            const latest = prepareMerge(device, cloud);
+            if (!sameSourceSnapshot(plan, latest, 'device') || !sameSourceSnapshot(plan, latest, 'cloud')) {
+                setMergeReview(null);
+                setBackupMsg('Data changed during review. Nothing was changed; start again to compare the latest versions.');
+                return;
+            }
+            const now = Date.now();
+            await db.transaction('rw', db.records, db.settings, db.semesters, db.pending_sync, async () => {
+                const pending = [];
+                for (const group of plan.groups) {
+                    const selected = selections[`${group.collection}:${group.key}`] || group.options[0];
+                    const needsUpload = !group.cloud || group.cloud.signature !== selected.signature;
+                    const updatedAt = needsUpload ? Math.max(now, Number(group.cloud?.value.updatedAt || 0) + 1) : Math.max(Number(selected.value.updatedAt || 0), Number(group.cloud?.value.updatedAt || 0));
+                    const value = { ...selected.value, ...(updatedAt ? { updatedAt } : {}) };
+                    await db[group.collection].put(value);
+                    if (needsUpload) pending.push({ collection: group.collection, docId: String(group.key), action: 'upsert', timestamp: now });
+                }
+                if (pending.length) await db.pending_sync.bulkAdd(pending);
+            });
+            setMergeReview(null);
+            setBackupMsg('Changes saved on this device. Syncing...');
             await triggerSync();
             await refreshStorage();
-            setBackupMsg('Sync completed!');
-        } catch {
-            setBackupMsg('Sync failed');
+            setBackupMsg('Sync completed. Device and cloud records were compared.');
+        } catch (err) {
+            console.error('Merge or sync failed:', err);
+            setBackupMsg('Sync could not finish. Your local data is kept; please retry.');
         } finally {
             setSyncingNow(false);
-            setTimeout(() => setBackupMsg(''), 3000);
         }
+    };
+
+    const beginMerge = async (backup = null) => {
+        if (!navigator.onLine || !localStorage.getItem('pronto_token')) {
+            setBackupMsg('Connect to the internet and sign in before syncing or restoring.');
+            return;
+        }
+        setSyncingNow(true);
+        setBackupMsg('Comparing device and cloud data...');
+        try {
+            const cloud = await api.get('/api/sync/pull');
+            const device = {
+                records: await db.records.toArray(),
+                semesters: await db.semesters.toArray(),
+                settings: await db.settings.get('v8')
+            };
+            const plan = prepareMerge(device, cloud, backup);
+            if (plan.conflicts.length) {
+                setBackupMsg('Review the differences before syncing.');
+                setMergeReview({ plan, index: 0, selections: {} });
+            } else {
+                await finishMerge(plan, {});
+            }
+        } catch (err) {
+            console.error('Could not compare data:', err);
+            setBackupMsg('Could not compare cloud data. Nothing was changed; please retry.');
+        } finally {
+            setSyncingNow(false);
+        }
+    };
+
+    const handleSyncNow = () => beginMerge();
+
+    const chooseMergeOption = async (option) => {
+        const { plan, index, selections } = mergeReview;
+        const group = plan.conflicts[index];
+        const next = { ...selections, [`${group.collection}:${group.key}`]: option };
+        if (index + 1 < plan.conflicts.length) setMergeReview({ plan, index: index + 1, selections: next });
+        else await finishMerge(plan, next);
     };
 
     const saveSetting = async (key, value) => {
@@ -214,44 +285,7 @@ export const SettingsPage = () => {
                     (!data.records && !data.semesters && !data.settings)) {
                     throw new Error('Invalid backup format');
                 }
-                const restoredAt = Date.now();
-                const records = data.records?.map(record => ({ ...record, updatedAt: restoredAt }));
-                const semesters = data.semesters?.map(semester => ({ ...semester, updatedAt: restoredAt }));
-                const restoredSettings = data.settings?.[0] ? { ...data.settings[0], id: 'v8', updatedAt: restoredAt } : null;
-                await db.transaction('rw', db.records, db.settings, db.semesters, db.pending_sync, async () => {
-                    const pending = [];
-                    if (records) {
-                        await db.records.clear();
-                        await db.records.bulkAdd(records);
-                        for (const record of records) {
-                            pending.push({ collection: 'records', docId: String(record.date), action: 'upsert', timestamp: restoredAt });
-                        }
-                    }
-                    if (restoredSettings) {
-                        await db.settings.put(restoredSettings);
-                        pending.push({ collection: 'settings', docId: 'v8', action: 'upsert', timestamp: restoredAt });
-                    }
-                    if (semesters) {
-                        await db.semesters.clear();
-                        const ids = await db.semesters.bulkAdd(semesters, { allKeys: true });
-                        for (const id of ids) {
-                            pending.push({ collection: 'semesters', docId: String(id), action: 'upsert', timestamp: restoredAt });
-                        }
-                    }
-                    if (pending.length) await db.pending_sync.bulkAdd(pending);
-                });
-                setBackupMsg('Backup restored locally. Syncing to the cloud...');
-                if (!navigator.onLine || !localStorage.getItem('pronto_token')) {
-                    setBackupMsg('Backup restored locally. It will sync when you are signed in and online.');
-                } else {
-                    try {
-                        await triggerSync();
-                        await refreshStorage();
-                        setBackupMsg('Backup restored and synced.');
-                    } catch {
-                        setBackupMsg('Backup restored locally. Cloud sync failed; use Sync now to retry.');
-                    }
-                }
+                await beginMerge(data);
             } catch (err) {
                 console.error('Backup restore failed:', err);
                 setBackupMsg('Backup could not be restored. Existing local data was kept.');
@@ -259,6 +293,7 @@ export const SettingsPage = () => {
         };
         reader.onerror = () => setBackupMsg('The backup file could not be read.');
         reader.readAsText(file);
+        e.target.value = '';
     };
 
     if (!settings) return <div className="p-6 text-center opacity-50">Carregando...</div>;
@@ -325,8 +360,8 @@ export const SettingsPage = () => {
                                 </div>
 
                                 <div className="flex justify-between text-[10px] opacity-60 pt-0.5">
-                                    <span>Records: {formatBytes(storageUsage?.dbBytes || 0)} ({storageUsage?.recordsCount || 0} days)</span>
-                                    <span>Photos: {formatBytes(storageUsage?.filesBytes || 0)} ({storageUsage?.filesCount || 0})</span>
+                                    <span>{storageUsage ? `Records: ${formatBytes(storageUsage.dbBytes || 0)} (${storageUsage.recordsCount || 0} days)` : 'Cloud storage unavailable'}</span>
+                                    {storageUsage && <span>Photos: {formatBytes(storageUsage.filesBytes || 0)} ({storageUsage.filesCount || 0})</span>}
                                 </div>
                             </div>
                         );
@@ -352,6 +387,7 @@ export const SettingsPage = () => {
                             </button>
                         )}
                     </div>
+                    {backupMsg && <p role="status" aria-live="polite" className="text-xs text-slate-200">{backupMsg}</p>}
                 </Card>
             )}
 
@@ -460,33 +496,6 @@ export const SettingsPage = () => {
                     </label>
                 </div>
 
-                {!!settings.tolerance && (
-                    <div className="pt-2 border-t border-white/5 space-y-2">
-                        <span className="text-xs text-slate-400 block">{t('tolerance_mode_title')}</span>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => saveSetting('toleranceMode', 'entry')}
-                                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                                    (settings.toleranceMode || 'exit') === 'entry'
-                                        ? 'bg-[var(--primary)] text-white border-transparent shadow-sm'
-                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                }`}
-                            >
-                                {t('tolerance_on_entry')}
-                            </button>
-                            <button
-                                onClick={() => saveSetting('toleranceMode', 'exit')}
-                                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
-                                    (settings.toleranceMode || 'exit') === 'exit'
-                                        ? 'bg-[var(--primary)] text-white border-transparent shadow-sm'
-                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                }`}
-                            >
-                                {t('tolerance_on_exit')}
-                            </button>
-                        </div>
-                    </div>
-                )}
             </Card>
 
             {/* Semester Management */}
@@ -510,6 +519,40 @@ export const SettingsPage = () => {
 
                 <SemesterList />
             </Card>
+
+            {mergeReview && createPortal((() => {
+                const { plan, index } = mergeReview;
+                const group = plan.conflicts[index];
+                return (
+                    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="merge-title">
+                        <div className="theme-card w-full max-w-md max-h-[85dvh] overflow-y-auto p-5 space-y-4 text-white shadow-2xl">
+                            <div>
+                                <p className="text-xs text-slate-400">Difference {index + 1} of {plan.conflicts.length}</p>
+                                <h3 id="merge-title" className="text-lg font-semibold mt-1">
+                                    {group.collection === 'records' ? `Choose the record for ${group.key}` : group.collection === 'semesters' ? 'Choose the schedule to keep' : 'Choose the settings to keep'}
+                                </h3>
+                                <p className="text-xs text-slate-300 mt-2">Select the version you want to keep. Nothing changes until all differences are reviewed.</p>
+                            </div>
+                            {group.options.map((option, optionIndex) => (
+                                <button key={optionIndex} disabled={syncingNow} onClick={() => chooseMergeOption(option)} className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-left hover:bg-white/10 space-y-1">
+                                    <span className="block text-sm font-semibold">{option.sources.map(source => ({ device: 'This device', cloud: 'Cloud', backup: 'Backup file' }[source])).join(' / ')}</span>
+                                    {group.collection === 'records' ? (
+                                        <span className="block text-xs text-slate-300 break-words">
+                                            {(option.value.entries || []).map(entry => `${entry.type || ''} ${entry.time || ''}${entry.photo ? ' 📷' : ''}`).join(' · ') || 'No punches'}{option.value.note ? ` · ${option.value.note}` : ''}
+                                            <span className="flex flex-wrap gap-2 mt-2">{(option.value.entries || []).filter(entry => entry.photo).map((entry, photoIndex) => <img key={photoIndex} src={entry.photo} alt={`${entry.time || ''} photo`} className="w-12 h-12 object-cover rounded-lg" />)}</span>
+                                        </span>
+                                    ) : group.collection === 'semesters' ? (
+                                        <span className="block text-xs text-slate-300 break-words">{option.value.name || 'Schedule'} · {option.value.startDate} – {option.value.endDate}<br />Hours: {JSON.stringify(option.value.targets || [])}</span>
+                                    ) : (
+                                        <span className="block text-xs text-slate-300 break-words">Theme: {option.value.theme || 'default'} · Language: {option.value.language || 'default'} · Tolerance: {option.value.tolerance || 0} min<br />Hours: {JSON.stringify(option.value.targets || [])}</span>
+                                    )}
+                                </button>
+                            ))}
+                            <button disabled={syncingNow} onClick={() => { setMergeReview(null); setBackupMsg('Review cancelled. No data was changed.'); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
+                        </div>
+                    </div>
+                );
+            })(), document.body)}
 
             {/* GitHub Star Plea */}
             <div className="pt-8 pb-4 text-center space-y-4">
