@@ -136,7 +136,7 @@ const NavItem = ({ to, icon, label }) => {
         <NavLink 
             to={to} 
             className={({ isActive }) =>
-                `theme-nav-item flex flex-col items-center justify-center gap-1 py-2 px-8 transition-all duration-300 active:scale-95 ${isActive
+                `theme-nav-item flex flex-col items-center justify-center gap-1 py-2 px-3 transition-colors duration-200 active:scale-95 select-none ${isActive
                     ? "theme-nav-active"
                     : "text-slate-400 hover:text-slate-200"
                 }`
