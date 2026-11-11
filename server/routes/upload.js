@@ -4,7 +4,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { requireAuth } from './auth.js';
-import { addFileRecord, getStorageUsage } from '../db.js';
+import { addFileRecord, getStorageUsage, getUserById } from '../db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -50,6 +50,17 @@ const upload = multer({
 // Upload image
 router.post('/', requireAuth, upload.single('photo'), (req, res) => {
   try {
+    const user = getUserById(req.user.id);
+    if (user?.is_banned) {
+      if (req.file) {
+        try { fs.unlinkSync(req.file.path); } catch {}
+      }
+      return res.status(403).json({ 
+        error: `Account suspended. Photo uploads are disabled: ${user.ban_reason || 'Contact administrator.'}`,
+        isBanned: true
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: 'No photo provided' });
     }

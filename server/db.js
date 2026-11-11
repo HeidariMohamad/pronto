@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
+import { createHash } from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -72,6 +73,15 @@ db.exec(`
     value TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS deleted_items (
+    user_id TEXT NOT NULL,
+    collection TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    deleted_at INTEGER NOT NULL,
+    PRIMARY KEY (user_id, collection, item_id),
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_records_user ON records(user_id);
   CREATE INDEX IF NOT EXISTS idx_semesters_user ON semesters(user_id);
   CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);
@@ -83,6 +93,47 @@ try {
 } catch (e) {
   // column already exists
 }
+
+try {
+  db.exec('ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0;');
+} catch (e) {
+  // column already exists
+}
+
+try {
+  db.exec('ALTER TABLE users ADD COLUMN ban_reason TEXT DEFAULT "";');
+} catch (e) {
+  // column already exists
+}
+
+try {
+  db.exec('ALTER TABLE users ADD COLUMN banned_at INTEGER DEFAULT NULL;');
+} catch (e) {
+  // column already exists
+}
+
+// Notifications and user messaging schema
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT DEFAULT 'info',
+    created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+    created_by TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS notification_reads (
+    notification_id TEXT,
+    user_id TEXT,
+    read_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+    PRIMARY KEY (notification_id, user_id),
+    FOREIGN KEY(notification_id) REFERENCES notifications(id) ON DELETE CASCADE,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+`);
 
 export function runTransaction(fn) {
   db.exec('BEGIN');
@@ -97,7 +148,8 @@ export function runTransaction(fn) {
 }
 
 // Users
-export function upsertUser({ id, google_id, email, name, avatar_url, is_admin = 0 }) {
+export function upsertUser({ id, google_id, email, name, avatar_url = '', is_admin = 0 }) {
+  const safeAvatar = avatar_url || '';
   const existing = db.prepare('SELECT * FROM users WHERE google_id = ?').get(google_id);
 
   if (existing) {
@@ -106,13 +158,13 @@ export function upsertUser({ id, google_id, email, name, avatar_url, is_admin = 
       UPDATE users 
       SET name = ?, avatar_url = ?, email = ?, is_admin = ?
       WHERE google_id = ?
-    `).run(name, avatar_url, email, newAdmin, google_id);
+    `).run(name, safeAvatar, email, newAdmin, google_id);
     return db.prepare('SELECT * FROM users WHERE google_id = ?').get(google_id);
   } else {
     db.prepare(`
       INSERT INTO users (id, google_id, email, name, avatar_url, is_admin)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, google_id, email, name, avatar_url, is_admin);
+    `).run(id, google_id, email, name, safeAvatar, is_admin);
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   }
 }
@@ -157,18 +209,18 @@ export function getStorageUsage(userId) {
 
   const recordsRow = db.prepare(`
     SELECT COUNT(*) as count, 
-           COALESCE(SUM(LENGTH(entries) + LENGTH(note) + LENGTH(date)), 0) as bytes
+           COALESCE(SUM(LENGTH(CAST(entries AS BLOB)) + LENGTH(CAST(note AS BLOB)) + LENGTH(CAST(date AS BLOB))), 0) as bytes
     FROM records WHERE user_id = ?
   `).get(userId);
 
   const semestersRow = db.prepare(`
     SELECT COUNT(*) as count,
-           COALESCE(SUM(LENGTH(name) + LENGTH(targets) + 50), 0) as bytes
+           COALESCE(SUM(LENGTH(CAST(name AS BLOB)) + LENGTH(CAST(targets AS BLOB)) + 50), 0) as bytes
     FROM semesters WHERE user_id = ?
   `).get(userId);
 
   const settingsRow = db.prepare(`
-    SELECT COALESCE(LENGTH(data), 0) as bytes FROM settings WHERE user_id = ?
+    SELECT COALESCE(LENGTH(CAST(data AS BLOB)), 0) as bytes FROM settings WHERE user_id = ?
   `).get(userId);
 
   const filesRow = db.prepare(`
@@ -206,9 +258,91 @@ export function getAllUsersStats() {
       avatar_url: user.avatar_url,
       created_at: user.created_at,
       is_admin: user.is_admin,
+      is_banned: user.is_banned || 0,
+      ban_reason: user.ban_reason || '',
+      banned_at: user.banned_at || null,
       ...usage
     };
   });
+}
+
+// User ban management
+export function banUser(userId, isBanned, reason = '') {
+  db.prepare(`
+    UPDATE users 
+    SET is_banned = ?, ban_reason = ?, banned_at = ?
+    WHERE id = ?
+  `).run(isBanned ? 1 : 0, isBanned ? reason : '', isBanned ? Date.now() : null, userId);
+  return getUserById(userId);
+}
+
+// Notifications & Messaging
+export function createNotification({ id, userId = null, title, message, type = 'info', createdBy = null }) {
+  const notifId = id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO notifications (id, user_id, title, message, type, created_at, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(notifId, userId || null, title, message, type, now, createdBy);
+  return { id: notifId, userId, title, message, type, createdAt: now, createdBy };
+}
+
+export function getUserNotifications(userId) {
+  const rows = db.prepare(`
+    SELECT n.*, 
+           CASE WHEN nr.read_at IS NOT NULL THEN 1 ELSE 0 END as is_read
+    FROM notifications n
+    LEFT JOIN notification_reads nr ON n.id = nr.notification_id AND nr.user_id = ?
+    WHERE n.user_id IS NULL OR n.user_id = ?
+    ORDER BY n.created_at DESC
+    LIMIT 50
+  `).all(userId, userId);
+
+  return rows.map(r => ({
+    id: r.id,
+    userId: r.user_id,
+    title: r.title,
+    message: r.message,
+    type: r.type,
+    createdAt: r.created_at,
+    createdBy: r.created_by,
+    isRead: Boolean(r.is_read)
+  }));
+}
+
+export function dismissNotification(notificationId, userId) {
+  db.prepare(`
+    INSERT INTO notification_reads (notification_id, user_id, read_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(notification_id, user_id) DO UPDATE SET read_at = excluded.read_at
+  `).run(notificationId, userId, Date.now());
+}
+
+export function getAllNotifications() {
+  return db.prepare(`
+    SELECT n.*, 
+           u.name as recipient_name, 
+           u.email as recipient_email,
+           (SELECT COUNT(*) FROM notification_reads WHERE notification_id = n.id) as read_count
+    FROM notifications n
+    LEFT JOIN users u ON n.user_id = u.id
+    ORDER BY n.created_at DESC
+  `).all().map(r => ({
+    id: r.id,
+    userId: r.user_id,
+    recipientName: r.recipient_name || (r.user_id ? 'Unknown' : 'All Users (Broadcast)'),
+    recipientEmail: r.recipient_email || '',
+    title: r.title,
+    message: r.message,
+    type: r.type,
+    createdAt: r.created_at,
+    createdBy: r.created_by,
+    readCount: r.read_count || 0
+  }));
+}
+
+export function deleteNotification(notificationId) {
+  db.prepare('DELETE FROM notifications WHERE id = ?').run(notificationId);
 }
 
 // Records
@@ -223,7 +357,14 @@ export function getRecords(userId) {
 }
 
 export function upsertRecord(userId, { date, entries, note, updatedAt }) {
-  const entriesStr = typeof entries === 'string' ? entries : JSON.stringify(entries || []);
+  rejectDeletedItem(userId, 'records', date);
+  const inputEntries = typeof entries === 'string' ? JSON.parse(entries) : (entries || []);
+  const removedPhotos = new Set(db.prepare("SELECT item_id FROM deleted_items WHERE user_id = ? AND collection = 'photos'").all(userId).map(row => row.item_id));
+  const hasEmbeddedDeletions = [...removedPhotos].some(value => value.startsWith('embedded:'));
+  const entriesStr = JSON.stringify(inputEntries.map((entry, index) => {
+    const key = hasEmbeddedDeletions ? embeddedPhotoKey(date, entry, index) : null;
+    return removedPhotos.has(entry?.photo) || (key && removedPhotos.has(key)) ? { ...entry, photo: null } : entry;
+  }));
   const stmt = db.prepare(`
     INSERT INTO records (user_id, date, entries, note, updated_at)
     VALUES (?, ?, ?, ?, ?)
@@ -253,6 +394,7 @@ export function getSemesters(userId) {
 }
 
 export function upsertSemester(userId, { id, name, startDate, endDate, targets, updatedAt }) {
+  rejectDeletedItem(userId, 'semesters', String(id));
   const targetsStr = typeof targets === 'string' ? targets : JSON.stringify(targets || []);
   // Older rows used globally shared numeric IDs; keep those for their owner,
   // but give new rows an account-scoped key so two users cannot overwrite each other.
@@ -303,4 +445,48 @@ export function addFileRecord(id, userId, filename, originalName, sizeBytes) {
     INSERT INTO files (id, user_id, filename, original_name, size_bytes)
     VALUES (?, ?, ?, ?, ?)
   `).run(id, userId, filename, originalName, sizeBytes);
+}
+
+export function getDeletedItems(userId) {
+  return db.prepare('SELECT collection, item_id AS id, deleted_at AS deletedAt FROM deleted_items WHERE user_id = ?').all(userId);
+}
+
+export function embeddedPhotoKey(date, entry, index) {
+  if (typeof entry?.photo !== 'string' || !entry.photo.startsWith('data:image/')) return null;
+  const identity = entry.id == null ? `index-${index}` : `id-${String(entry.id)}`;
+  const hash = createHash('sha256').update(entry.photo, 'utf8').digest('hex');
+  return `embedded:${JSON.stringify([date, identity, hash])}`;
+}
+
+function rejectDeletedItem(userId, collection, id) {
+  if (db.prepare('SELECT 1 FROM deleted_items WHERE user_id = ? AND collection = ? AND item_id = ?').get(userId, collection, String(id))) {
+    const error = new Error('An item was deleted from the cloud. Use Sync Now to review the conflict.');
+    error.code = 'DELETED_ITEM_CONFLICT';
+    throw error;
+  }
+}
+
+export function markDeleted(userId, collection, id) {
+  const previous = db.prepare('SELECT deleted_at FROM deleted_items WHERE user_id = ? AND collection = ? AND item_id = ?').get(userId, collection, String(id));
+  const deletedAt = Math.max(Date.now(), Number(previous?.deleted_at || 0) + 1);
+  db.prepare('INSERT INTO deleted_items (user_id, collection, item_id, deleted_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, collection, item_id) DO UPDATE SET deleted_at = excluded.deleted_at').run(userId, collection, String(id), deletedAt);
+  return deletedAt;
+}
+
+export function restoreDeletedItem(userId, collection, id, deletedAt, value) {
+  return runTransaction(() => {
+    const tombstone = db.prepare('SELECT deleted_at FROM deleted_items WHERE user_id = ? AND collection = ? AND item_id = ?').get(userId, collection, String(id));
+    if (!tombstone || Number(tombstone.deleted_at) !== Number(deletedAt)) {
+      const error = new Error('Cloud data changed. Please review it again.');
+      error.code = 'DELETED_ITEM_CONFLICT';
+      throw error;
+    }
+    if (!value || (collection === 'records' && value.date !== id) || (collection === 'semesters' && String(value.id) !== String(id))) throw new Error('Invalid item');
+    db.prepare('DELETE FROM deleted_items WHERE user_id = ? AND collection = ? AND item_id = ?').run(userId, collection, String(id));
+    const updatedAt = Date.now();
+    if (collection === 'records') upsertRecord(userId, { ...value, updatedAt });
+    else if (collection === 'semesters') upsertSemester(userId, { ...value, updatedAt });
+    else throw new Error('Invalid collection');
+    return updatedAt;
+  });
 }

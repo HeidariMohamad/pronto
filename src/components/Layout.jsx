@@ -4,6 +4,7 @@ import { Fingerprint, Sliders, ShieldCheck } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { subscribeSyncStatus } from '../services/sync';
 import { useAuth } from '../context/AuthContext';
+import { NotificationBanner } from './NotificationBanner';
 
 export const Layout = ({ children }) => {
     const { t } = useTranslation();
@@ -74,6 +75,7 @@ export const Layout = ({ children }) => {
 
             {/* Main Content */}
             <main ref={mainRef} className="flex-1 p-4 pt-20 max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
+                <NotificationBanner />
                 {children}
             </main>
 

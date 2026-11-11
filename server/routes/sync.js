@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from './auth.js';
 import {
+  getUserById,
   getRecords,
   upsertRecord,
   getSemesters,
@@ -8,10 +9,24 @@ import {
   getSettings,
   upsertSettings,
   getStorageUsage,
+  getDeletedItems,
   runTransaction
 } from '../db.js';
 
 const router = Router();
+
+// Middleware to block suspended accounts from syncing
+router.use(requireAuth, (req, res, next) => {
+  const user = getUserById(req.user.id);
+  if (user?.is_banned) {
+    return res.status(403).json({ 
+      error: `Your account has been suspended by an administrator${user.ban_reason ? `: "${user.ban_reason}"` : '.'}`,
+      isBanned: true,
+      banReason: user.ban_reason || ''
+    });
+  }
+  next();
+});
 
 // Full download (e.g., logging in on a new device)
 router.get('/pull', requireAuth, (req, res) => {
@@ -26,6 +41,7 @@ router.get('/pull', requireAuth, (req, res) => {
       records,
       semesters,
       settings,
+      deletedItems: getDeletedItems(userId),
       storageUsage
     });
   } catch (err) {
@@ -70,6 +86,7 @@ router.post('/push', requireAuth, (req, res) => {
     });
   } catch (err) {
     console.error('Sync push error:', err);
+    if (err.code === 'DELETED_ITEM_CONFLICT') return res.status(409).json({ error: err.message });
     res.status(500).json({ error: 'Failed to push sync data' });
   }
 });
@@ -107,6 +124,7 @@ router.post('/migrate', requireAuth, (req, res) => {
     });
   } catch (err) {
     console.error('Migration error:', err);
+    if (err.code === 'DELETED_ITEM_CONFLICT') return res.status(409).json({ error: err.message });
     res.status(500).json({ error: 'Failed to migrate data to server' });
   }
 });

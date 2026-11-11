@@ -114,7 +114,9 @@ router.post('/google', async (req, res) => {
         email: user.email,
         name: user.name,
         avatar_url: user.avatar_url,
-        isAdmin: !!user.is_admin
+        isAdmin: !!user.is_admin,
+        isBanned: !!user.is_banned,
+        banReason: user.ban_reason || ''
       },
       storageUsage: storage
     });
@@ -139,7 +141,9 @@ router.get('/me', requireAuth, (req, res) => {
       email: user.email,
       name: user.name,
       avatar_url: user.avatar_url,
-      isAdmin: !!user.is_admin
+      isAdmin: !!user.is_admin,
+      isBanned: !!user.is_banned,
+      banReason: user.ban_reason || ''
     },
     storageUsage: storage
   });

@@ -17,6 +17,8 @@ import authRoutes, { requireAuth } from './routes/auth.js';
 import syncRoutes from './routes/sync.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
+import storageRoutes from './routes/storage.js';
+import notificationRoutes from './routes/notifications.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +36,7 @@ app.use(cors({
 app.use(cookieParser());
 // Large legacy records can include embedded photos. Authenticate before parsing them.
 app.use('/api/sync', requireAuth, express.json({ limit: '150mb' }));
+app.use('/api/storage', requireAuth, express.json({ limit: '150mb' }));
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
@@ -50,6 +53,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/sync', syncRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/storage', storageRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {
