@@ -92,6 +92,11 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS optimizer_processed_files (
+    user_id TEXT NOT NULL, file_id TEXT NOT NULL, content_hash TEXT NOT NULL,
+    PRIMARY KEY (user_id, file_id), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_records_user ON records(user_id);
   CREATE INDEX IF NOT EXISTS idx_semesters_user ON semesters(user_id);
   CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);

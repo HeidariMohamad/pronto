@@ -5,6 +5,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
+import { getOptimizerJob, getOptimizerSummary, startOptimizerJob } from '../services/photoOptimizer.js';
 import { requireAdmin } from './auth.js';
 import { 
   db,
@@ -37,7 +38,7 @@ function optimizedImage(dataUrl) {
   return valid ? { mime: match[1], bytes } : null;
 }
 
-router.post('/users/:id/optimize-photo', requireAdmin, (req, res) => {
+function optimizePhoto(req, res) {
   const { kind, date, index, fileId, expectedHash, dataUrl } = req.body || {};
   const userId = req.params.id;
   const image = optimizedImage(dataUrl);
@@ -57,23 +58,26 @@ router.post('/users/:id/optimize-photo', requireAdmin, (req, res) => {
       if (typeof original !== 'string' || !original.startsWith('data:image/') || photoHash(original) !== expectedHash) return res.status(409).json({ error: 'Photo changed' });
       if (dataUrl.length >= original.length) return res.json({ optimized: false });
       const identity = entries[index].id == null ? `index-${index}` : `id-${String(entries[index].id)}`;
+      const filename = `optimized_${randomUUID()}.webp`;
+      const newFileId = `file_${randomUUID()}`;
+      const replacement = `/uploads/${userId}/${filename}`;
+      const updatedEntries = entries.map((entry, entryIndex) => entryIndex === index ? { ...entry, photo: replacement } : entry);
+      if (Buffer.byteLength(JSON.stringify(entries)) <= Buffer.byteLength(JSON.stringify(updatedEntries)) + image.bytes.length) return res.json({ optimized: false });
       const backupId = randomUUID();
       const backup = path.join(backupDir, `${backupId}.txt`);
       fs.writeFileSync(backup, original, { flag: 'wx', mode: 0o600 });
       fs.mkdirSync(userDir, { recursive: true });
-      const filename = `optimized_${randomUUID()}.webp`;
       newFile = path.join(userDir, filename);
       fs.writeFileSync(newFile, image.bytes, { flag: 'wx', mode: 0o600 });
-      const replacement = `/uploads/${userId}/${filename}`;
       fs.writeFileSync(path.join(backupDir, `${backupId}.json`), JSON.stringify({ kind, userId, date, index, identity, originalHash: expectedHash, replacement, savedAt: new Date().toISOString() }), { flag: 'wx', mode: 0o600 });
-      entries[index] = { ...entries[index], photo: replacement };
       runTransaction(() => {
-        db.prepare('INSERT INTO files (id,user_id,filename,original_name,size_bytes) VALUES (?,?,?,?,?)').run(`file_${randomUUID()}`, userId, filename, filename, image.bytes.length);
-        db.prepare('UPDATE records SET entries = ? WHERE user_id = ? AND date = ?').run(JSON.stringify(entries), userId, date);
+        db.prepare('INSERT INTO files (id,user_id,filename,original_name,size_bytes) VALUES (?,?,?,?,?)').run(newFileId, userId, filename, filename, image.bytes.length);
+        db.prepare('UPDATE records SET entries = ? WHERE user_id = ? AND date = ?').run(JSON.stringify(updatedEntries), userId, date);
         db.prepare('INSERT OR REPLACE INTO optimized_photo_aliases (user_id,record_date,entry_identity,original_hash,replacement_url) VALUES (?,?,?,?,?)').run(userId, date, identity, expectedHash, replacement);
+        db.prepare('INSERT OR REPLACE INTO optimizer_processed_files (user_id, file_id, content_hash) VALUES (?, ?, ?)').run(userId, newFileId, photoHash(image.bytes));
       });
       newFile = null;
-      return res.json({ optimized: true, savedBytes: beforeBytes - getStorageUsage(userId).totalBytes });
+      return res.json({ optimized: true, fileId: newFileId, savedBytes: beforeBytes - getStorageUsage(userId).totalBytes });
     }
     if (kind === 'file') {
       const file = db.prepare('SELECT filename FROM files WHERE user_id = ? AND id = ?').get(userId, fileId);
@@ -92,7 +96,10 @@ router.post('/users/:id/optimize-photo', requireAdmin, (req, res) => {
       fs.writeFileSync(newFile, image.bytes, { flag: 'wx', mode: 0o600 });
       fs.renameSync(newFile, originalPath);
       newFile = null;
-      try { db.prepare('UPDATE files SET size_bytes = ? WHERE user_id = ? AND id = ?').run(image.bytes.length, userId, fileId); }
+      try { runTransaction(() => {
+        db.prepare('UPDATE files SET size_bytes = ? WHERE user_id = ? AND id = ?').run(image.bytes.length, userId, fileId);
+        db.prepare('INSERT OR REPLACE INTO optimizer_processed_files (user_id, file_id, content_hash) VALUES (?, ?, ?)').run(userId, fileId, photoHash(image.bytes));
+      }); }
       catch (err) { fs.copyFileSync(backupPath, originalPath); throw err; }
       return res.json({ optimized: true, savedBytes: beforeBytes - getStorageUsage(userId).totalBytes });
     }
@@ -102,6 +109,18 @@ router.post('/users/:id/optimize-photo', requireAdmin, (req, res) => {
     console.error('Photo optimization failed:', err);
     return res.status(500).json({ error: 'Photo optimization failed' });
   }
+}
+
+router.post('/users/:id/optimize-photo', requireAdmin, optimizePhoto);
+
+router.get('/optimizer', requireAdmin, (req, res) => res.json({ job: getOptimizerJob(), users: getOptimizerSummary() }));
+router.post('/optimizer', requireAdmin, (req, res) => {
+  try {
+    const { mode, userId } = req.body || {};
+    if (!['preview', 'optimize'].includes(mode) || (userId && !getUserById(userId))) return res.status(400).json({ error: 'Invalid optimizer request' });
+    const job = startOptimizerJob({ mode, userId: userId || null, requestedBy: req.user.id }, optimizePhoto);
+    return res.status(202).json({ job });
+  } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 
 router.get('/users/:id/photos/:fileId', requireAdmin, (req, res) => {

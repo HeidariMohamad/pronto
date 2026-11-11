@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { createHash } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import sharp from '../server/node_modules/sharp/dist/index.mjs';
 import express from '../server/node_modules/express/index.js';
 import cookieParser from '../server/node_modules/cookie-parser/index.js';
 
@@ -68,6 +70,52 @@ test('inventory, deletion and explicit restore stay scoped to the signed-in acco
   assert.equal((await request('user-a', '/api/storage/restore', { collection: 'records', id: day, deletedAt: deleted.data.deletedAt, value: record })).status, 200);
   assert.equal(getRecords('user-a').length, 1);
   assert.equal(getDeletedItems('user-a').length, 0);
+});
+
+test('server optimizer previews and runs per user with admin-only persistent progress', async () => {
+  const users = ['optimizer-a', 'optimizer-b'];
+  const pixels = Buffer.alloc(700 * 700 * 3);
+  for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 17 + Math.floor(i / 79)) % 256;
+  const photo = await sharp(pixels, { raw: { width: 700, height: 700, channels: 3 } }).jpeg({ quality: 100 }).toBuffer();
+  for (const user of users) {
+    upsertUser({ id: user, google_id: user, email: `${user}@example.com`, name: user });
+    upsertRecord(user, { date: '2026-08-01', entries: [{ id: 'p', photo: `data:image/jpeg;base64,${photo.toString('base64')}` }], note: '', updatedAt: 10 });
+  }
+  const endpoint = '/api/admin/optimizer';
+  assert.equal((await request('user-a', endpoint, { mode: 'preview' })).status, 403);
+  assert.equal((await request('admin', endpoint, { mode: 'preview' })).status, 202);
+  assert.equal((await request('admin', endpoint, { mode: 'preview' })).status, 409);
+  const waitJob = async () => {
+    for (let i = 0; i < 200; i++) {
+      const { data } = await request('admin', endpoint);
+      if (data.job.status !== 'running') return data.job;
+      await delay(20);
+    }
+    throw new Error('Optimizer did not finish');
+  };
+  const preview = await waitJob();
+  assert.equal(preview.status, 'completed');
+  assert.equal(preview.users.filter(item => users.includes(item.id)).length, 2);
+  assert.ok(preview.users.find(item => item.id === users[0]).estimatedBytes > 0);
+  assert.ok(getRecords(users[0])[0].entries[0].photo.startsWith('data:'));
+  assert.equal((await request('admin', endpoint, { mode: 'optimize', userId: users[0] })).status, 202);
+  const job = await waitJob();
+  assert.equal(job.status, 'completed');
+  assert.equal(job.processed, job.total);
+  assert.equal(job.users.length, 1);
+  assert.equal(job.users[0].optimized, 1);
+  assert.ok(job.users[0].savedBytes > 0);
+  assert.ok(job.users[0].afterBytes < job.users[0].beforeBytes);
+  assert.ok(getRecords(users[0])[0].entries[0].photo.startsWith('/uploads/'));
+  assert.ok(getRecords(users[1])[0].entries[0].photo.startsWith('data:'));
+  const history = await request('admin', endpoint);
+  assert.ok(history.data.users[users[0]].savedBytes > 0);
+  assert.equal(history.data.users[users[0]].estimatedBytes, null);
+  assert.ok(history.data.users[users[1]].estimatedBytes > 0);
+  assert.equal((await request('admin', endpoint, { mode: 'optimize', userId: users[0] })).status, 202);
+  const repeated = await waitJob();
+  assert.equal(repeated.users[0].optimized, 0);
+  assert.equal(repeated.users[0].savedBytes, 0);
 });
 
 test('admin optimization preserves originals and prevents old clients restoring large embedded photos', async () => {
@@ -239,6 +287,7 @@ test('batch delete and mass cleanup endpoints work reliably', async () => {
   assert.equal(getSettings(user), null);
   assert.equal(allRes.data.storageUsage.totalBytes, 0);
   assert.equal(fs.existsSync(path.join(testRoot, 'photo-optimization-backups', user)), false);
+  assert.equal(db.prepare('SELECT COUNT(*) AS count FROM optimizer_processed_files WHERE user_id = ?').get(user).count, 0);
   assert.equal(getSettings('user-b').language, 'fa');
 });
 

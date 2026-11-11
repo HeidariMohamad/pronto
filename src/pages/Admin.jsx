@@ -6,7 +6,7 @@ import { api } from '../services/api';
 import { Card } from '../components/UI';
 import { CloudBackupSummary } from '../components/BackupStatus';
 import { useTranslation } from '../hooks/useTranslation';
-import { optimizeImage } from '../services/imageOptimizer';
+import { OptimizerPanel } from '../components/OptimizerPanel';
 import { 
   Users, 
   HardDrive, 
@@ -101,8 +101,6 @@ export const AdminPage = () => {
   const [search, setSearch] = useState('');
   const [viewingUserData, setViewingUserData] = useState(null);
   const [userDataLoading, setUserDataLoading] = useState(false);
-  const [optimizing, setOptimizing] = useState(false);
-  const [optimizationMessage, setOptimizationMessage] = useState('');
 
   // Default storage limit state
   const [defaultLimitInput, setDefaultLimitInput] = useState('50');
@@ -273,7 +271,6 @@ export const AdminPage = () => {
   };
 
   const handleViewUserData = async (targetUser) => {
-    setOptimizationMessage('');
     setViewingUserData({ user: targetUser, cloud: null });
     setUserDataLoading(true);
     try {
@@ -285,46 +282,6 @@ export const AdminPage = () => {
     } finally {
       setUserDataLoading(false);
     }
-  };
-
-  const handleOptimizePhotos = async () => {
-    const { user: target, cloud } = viewingUserData;
-    if (!window.confirm(t('Optimize this user’s cloud photos? Original photos will be kept on the server.'))) return;
-    setOptimizing(true);
-    setOptimizationMessage('');
-    const tasks = [];
-    let unsupported = 0;
-    for (const record of cloud.records) {
-      recordEntries(record).forEach((entry, index) => {
-        if (typeof entry?.photo === 'string' && /^data:image\/(?:jpeg|png|webp);base64,/i.test(entry.photo)) {
-          tasks.push({ kind: 'embedded', date: record.date, index, original: entry.photo, url: `/api/admin/users/${encodeURIComponent(target.id)}/records/${encodeURIComponent(record.date)}/photos/${index}`, mime: 'image/webp' });
-        } else if (typeof entry?.photo === 'string' && entry.photo.startsWith('data:image/')) unsupported++;
-      });
-    }
-    for (const file of cloud.files) {
-      const ext = file.filename.split('.').pop().toLowerCase();
-      const mime = ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' })[ext];
-      if (mime) tasks.push({ kind: 'file', fileId: file.id, url: `/api/admin/users/${encodeURIComponent(target.id)}/photos/${encodeURIComponent(file.id)}`, mime });
-      else unsupported++;
-    }
-    let saved = 0, changed = 0, failed = unsupported;
-    for (const [index, task] of tasks.entries()) {
-      setOptimizationMessage(t('Optimizing photos: {current} of {total}', { current: index + 1, total: tasks.length }));
-      try {
-        const blob = await api.getImage(task.url);
-        const original = task.kind === 'embedded' ? new TextEncoder().encode(task.original) : await blob.arrayBuffer();
-        const digest = await crypto.subtle.digest('SHA-256', original);
-        const expectedHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-        const result = await optimizeImage(blob, 1024, 0.75, false, { mimeType: task.mime });
-        if (result.mimeType !== task.mime) { failed++; continue; }
-        const response = await api.post(`/api/admin/users/${encodeURIComponent(target.id)}/optimize-photo`, { kind: task.kind, date: task.date, index: task.index, fileId: task.fileId, expectedHash, dataUrl: result.dataUrl });
-        if (response.optimized) { changed++; saved += response.savedBytes; }
-      } catch (err) { console.warn('Photo optimization skipped:', err); failed++; }
-    }
-    try { setViewingUserData(await api.get(`/api/admin/users/${encodeURIComponent(target.id)}/data`)); await fetchMetricsAndNotifications(); }
-    catch { /* Report completed work even if refreshing fails. */ }
-    setOptimizationMessage(t('Optimized {count} photos, saving {size}. Skipped or failed: {failed}.', { count: changed, size: formatBytes(saved), failed }));
-    setOptimizing(false);
   };
 
   if (!isAdmin) return null;
@@ -451,6 +408,8 @@ export const AdminPage = () => {
           </div>)}
         </div>
       </Card>
+
+      <OptimizerPanel users={data?.users || []} />
 
       {/* Announcements / Notifications Section */}
       <Card className="space-y-3 bg-white/5 border border-white/10">
@@ -733,11 +692,10 @@ export const AdminPage = () => {
           <div className="w-full max-w-2xl max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-white/15 rounded-3xl p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
               <div><h3 className="text-lg font-semibold text-white">{t('Saved data')}</h3><p className="text-xs text-slate-400">{viewingUserData.user.name} · {viewingUserData.user.email}</p></div>
-              <button type="button" disabled={optimizing} onClick={() => setViewingUserData(null)} className="p-2 text-slate-400 hover:text-white disabled:opacity-40" aria-label={t('Close')}><X size={18}/></button>
+              <button type="button" onClick={() => setViewingUserData(null)} className="p-2 text-slate-400 hover:text-white disabled:opacity-40" aria-label={t('Close')}><X size={18}/></button>
             </div>
             {userDataLoading ? <p className="text-sm text-slate-400">{t('Loading…')}</p> : <>
               <CloudBackupSummary usage={viewingUserData.storageUsage} />
-              <div className="space-y-2"><button type="button" disabled={optimizing} onClick={handleOptimizePhotos} className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-blue-500 disabled:opacity-50">{optimizing ? t('Optimizing photos…') : t('Optimize cloud photos')}</button>{optimizationMessage && <p role="status" className="text-xs text-slate-300">{optimizationMessage}</p>}</div>
               {(() => {
                 const { records, files } = viewingUserData.cloud;
                 const photos = records.flatMap(record => recordPhotos(record, files, viewingUserData.user.id));

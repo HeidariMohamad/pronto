@@ -163,6 +163,7 @@ router.post('/delete', (req, res) => {
           }
         }
         db.prepare('DELETE FROM files WHERE id = ? AND user_id = ?').run(id, userId);
+        db.prepare('DELETE FROM optimizer_processed_files WHERE user_id = ? AND file_id = ?').run(userId, id);
       });
       let cleanupPending = false;
       if (movedFile) {
@@ -224,6 +225,7 @@ router.post('/delete-batch', (req, res) => {
           markDeleted(userId, 'photos', `/uploads/${userId}/${f.filename}`);
         }
         db.prepare('DELETE FROM files WHERE user_id = ?').run(userId);
+        db.prepare('DELETE FROM optimizer_processed_files WHERE user_id = ?').run(userId);
         db.prepare('DELETE FROM settings WHERE user_id = ?').run(userId);
       });
 
@@ -269,6 +271,7 @@ router.post('/delete-batch', (req, res) => {
           markDeleted(userId, 'photos', `/uploads/${userId}/${f.filename}`);
         }
         db.prepare('DELETE FROM files WHERE user_id = ?').run(userId);
+        db.prepare('DELETE FROM optimizer_processed_files WHERE user_id = ?').run(userId);
       });
 
       // Remove physical photo files
@@ -308,6 +311,7 @@ router.post('/delete-batch', (req, res) => {
               const url = `/uploads/${userId}/${file.filename}`;
               markDeleted(userId, 'photos', url);
               db.prepare('DELETE FROM files WHERE id = ? AND user_id = ?').run(id, userId);
+              db.prepare('DELETE FROM optimizer_processed_files WHERE user_id = ? AND file_id = ?').run(userId, id);
               deletedFiles.push(file.filename);
 
               // Strip from records

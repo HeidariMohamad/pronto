@@ -76,7 +76,7 @@ jobs:
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 22
-          source: "server/server.js,server/db.js,server/package.json,server/package-lock.json,server/routes/*"
+          source: "server/server.js,server/db.js,server/package.json,server/package-lock.json,server/routes/*,server/services/*"
           target: "/var/www/pronto-server"
           strip_components: 1
 
