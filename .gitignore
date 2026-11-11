@@ -28,6 +28,7 @@ dist-ssr/
 
 # Config files that are okay to ignore
 vite.config.*
+!vite.config.js
 tsconfig.*
 *.map
 
