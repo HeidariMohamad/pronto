@@ -1,6 +1,15 @@
 const MAX_PHOTO_BYTES = 4.75 * 1024 * 1024;
 
-// Use the same centered square as object-fit: cover in the viewfinder.
+// The viewfinder displays the entire frame; this guide marks the saved square.
+export function getSquareGuide(width, height) {
+  if (!width || !height) return { width: '100%', height: '100%' };
+  return {
+    width: `${Math.min(1, height / width) * 100}%`,
+    height: `${Math.min(1, width / height) * 100}%`
+  };
+}
+
+// Crop the same centered square marked by the viewfinder guide.
 export function getImageCrop(width, height, maxDimension, cropSquare = true) {
   const size = Math.min(width, height);
   const sourceWidth = cropSquare ? size : width;

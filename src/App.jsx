@@ -52,7 +52,7 @@ function AppRoutes() {
 function App() {
   const settings = useLiveQuery(() => db.settings.get('v8'));
   const rawTheme = settings?.theme;
-  const currentTheme = (rawTheme === 'default' || !rawTheme) ? 'liquid-glass' : rawTheme;
+  const currentTheme = (rawTheme === 'default' || !rawTheme) ? 'classic' : rawTheme;
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', currentTheme);

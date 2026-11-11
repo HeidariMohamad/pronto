@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, RefreshCw, X, Check, Image as ImageIcon, Zap, Sun, Smartphone } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
-import { optimizeImage } from '../services/imageOptimizer';
+import { getSquareGuide, optimizeImage } from '../services/imageOptimizer';
 
 const labels = {
   en: { square: 'Square photo', auto: 'Auto', brighter: 'Brightness', flash: 'Torch', close: 'Close', camera: 'Use phone camera', gallery: 'Choose from gallery', take: 'Take photo', flip: 'Flip camera', retake: 'Retake', use: 'Use photo', starting: 'Starting camera…', processing: 'Preparing photo…', denied: 'Camera permission was denied. Allow access in your browser settings.', unavailable: 'Could not start the in-app camera. You can use your phone camera instead.', failed: 'Could not prepare this photo. Please try again.' },
@@ -20,6 +20,11 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
   const generationRef = useRef(0);
   const [cameraEnabled, setCameraEnabled] = useState(true);
   const [facingMode, setFacingMode] = useState('environment');
+  const [deviceId, setDeviceId] = useState('');
+  const [devices, setDevices] = useState([]);
+  const [mirrored, setMirrored] = useState(false);
+  const [frameSize, setFrameSize] = useState({ width: 4, height: 3 });
+  const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [ready, setReady] = useState(false);
   const [captured, setCaptured] = useState(null);
   const [cameraError, setCameraError] = useState('');
@@ -28,6 +33,12 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
   const [brightness, setBrightness] = useState(1);
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+
+  useEffect(() => {
+    const update = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -53,7 +64,7 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera unavailable');
         ownedStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1440 } },
+          video: { ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facingMode } }), width: { ideal: 1920 }, resizeMode: { ideal: 'none' } },
           audio: false
         });
         if (cancelled) { ownedStream.getTracks().forEach(track => track.stop()); return; }
@@ -63,6 +74,13 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
           videoRef.current.play().catch(() => {});
         }
         const track = ownedStream.getVideoTracks()[0];
+        const actualFacing = track?.getSettings?.().facingMode;
+        const trackLabel = track?.label || '';
+        if (!cancelled) setMirrored(actualFacing ? actualFacing === 'user' : /front|user|selfie|frontal/i.test(trackLabel) || (!deviceId && facingMode === 'user'));
+        try {
+          const available = await navigator.mediaDevices.enumerateDevices();
+          if (!cancelled) setDevices(available.filter(device => device.kind === 'videoinput' && device.deviceId));
+        } catch { /* Camera selection is optional. */ }
         try {
           const caps = track?.getCapabilities?.() || {};
           if (!cancelled) setHasTorch(!!caps.torch);
@@ -70,6 +88,7 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
           for (const key of ['exposureMode', 'focusMode', 'whiteBalanceMode']) {
             if (Array.isArray(caps[key]) && caps[key].includes('continuous')) auto[key] = 'continuous';
           }
+          if (typeof caps.zoom?.min === 'number') auto.zoom = caps.zoom.min;
           if (track && Object.keys(auto).length) {
             const constraints = track.getConstraints?.() || {};
             await track.applyConstraints({ ...constraints, advanced: [...(constraints.advanced || []), auto] });
@@ -89,7 +108,7 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
       ownedStream?.getTracks().forEach(track => track.stop());
       if (streamRef.current === ownedStream) streamRef.current = null;
     };
-  }, [isOpen, facingMode, cameraEnabled, text.denied, text.unavailable]);
+  }, [isOpen, facingMode, deviceId, cameraEnabled, text.denied, text.unavailable]);
 
   if (!isOpen) return null;
 
@@ -128,22 +147,8 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
     setProcessing(true);
     setCaptureError('');
     try {
-      const track = streamRef.current?.getVideoTracks()[0];
-      const options = { brightness, mirror: facingMode === 'user' };
-      let still;
-      if (track && facingMode === 'environment' && typeof window.ImageCapture === 'function') {
-        try { still = await new window.ImageCapture(track).takePhoto(); }
-        catch (err) { console.warn('Still capture unavailable, using video frame:', err); }
-      }
-      if (still) {
-        try { await prepare(still, options, generation); }
-        catch (err) {
-          console.warn('Could not decode still capture, using video frame:', err);
-          await prepare(await videoFrame(), options, generation);
-        }
-      } else {
-        await prepare(await videoFrame(), options, generation);
-      }
+      const options = { brightness, mirror: mirrored };
+      await prepare(await videoFrame(), options, generation);
       if (generation === generationRef.current && navigator.vibrate) navigator.vibrate(20);
     } catch (err) {
       console.error('Photo capture failed:', err);
@@ -180,6 +185,16 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
     else videoRef.current?.play().catch(() => {});
   };
 
+  const updateFrameSize = (event) => {
+    const video = event.currentTarget;
+    if (video.videoWidth && video.videoHeight) setFrameSize({ width: video.videoWidth, height: video.videoHeight });
+  };
+  const ratio = captured ? 1 : frameSize.width / frameSize.height;
+  const previewWidth = Math.max(1, Math.min(viewport.width - 32, 420, Math.max(1, viewport.height - 270) * ratio));
+  const guide = getSquareGuide(frameSize.width, frameSize.height);
+  const guideText = lang === 'pt' ? 'A área dentro do quadrado será salva' : lang === 'fa' ? 'محدوده داخل مربع ذخیره می‌شود' : 'The area inside the square will be saved';
+  const lensText = lang === 'pt' ? 'Câmera' : lang === 'fa' ? 'دوربین' : 'Camera';
+
   return createPortal(
     <div className="fixed inset-0 z-[10000] flex flex-col items-center justify-between gap-4 bg-black p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] text-white select-none">
       <div className="w-full max-w-[380px] flex items-center justify-between gap-2">
@@ -192,15 +207,17 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
       </div>
 
       <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center gap-3">
-        <div className="relative shrink-0 overflow-hidden rounded-3xl border border-white/25 bg-neutral-900 shadow-2xl" style={{ width: 'min(100%, 360px, max(160px, calc(100dvh - 230px)))', aspectRatio: '1 / 1' }}>
-          <video ref={videoRef} autoPlay playsInline muted onLoadedData={() => setReady(true)} className={`absolute inset-0 h-full w-full object-cover ${facingMode === 'user' ? 'scale-x-[-1]' : ''} ${captured || cameraError || !cameraEnabled ? 'invisible' : ''}`} style={{ filter: brightness === 1 ? undefined : `brightness(${brightness})` }} />
+        <div className="relative shrink-0 overflow-hidden rounded-3xl border border-white/25 bg-neutral-900 shadow-2xl" style={{ width: `${previewWidth}px`, maxWidth: '100%', aspectRatio: `${ratio}` }}>
+          <video ref={videoRef} autoPlay playsInline muted onLoadedMetadata={updateFrameSize} onResize={updateFrameSize} onLoadedData={() => setReady(true)} className={`absolute inset-0 h-full w-full object-contain ${mirrored ? 'scale-x-[-1]' : ''} ${captured || cameraError || !cameraEnabled ? 'invisible' : ''}`} style={{ filter: brightness === 1 ? undefined : `brightness(${brightness})` }} />
           {captured && <img src={captured.dataUrl} alt={text.square} className="absolute inset-0 h-full w-full object-cover" />}
           {!captured && !cameraError && cameraEnabled && !ready && <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">{text.starting}</div>}
           {!captured && cameraError && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-slate-300">{cameraError}</div>}
-          {!captured && ready && !cameraError && <div className="pointer-events-none absolute inset-0 border border-white/10 rounded-3xl" />}
+          {!captured && ready && !cameraError && cameraEnabled && <div className="pointer-events-none absolute left-1/2 top-1/2 rounded-xl border-2 border-white/80" style={{ ...guide, transform: 'translate(-50%, -50%)', boxShadow: '0 0 0 9999px rgba(0,0,0,.35)' }} />}
           {processing && <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm">{text.processing}</div>}
         </div>
         {captureError && <p role="alert" className="text-center text-xs text-red-300">{captureError}</p>}
+        {!captured && ready && cameraEnabled && <p className="text-center text-xs text-slate-300">{guideText}</p>}
+        {!captured && cameraEnabled && devices.length > 1 && <select aria-label={lensText} value={deviceId || streamRef.current?.getVideoTracks()[0]?.getSettings?.().deviceId || ''} onChange={event => setDeviceId(event.target.value)} className="max-w-full rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white">{devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `${lensText} ${index + 1}`}</option>)}</select>}
         {!captured && <button type="button" onClick={openPhoneCamera} disabled={processing} className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs text-slate-200"><Smartphone size={14} />{text.camera}</button>}
       </div>
 
@@ -210,7 +227,7 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
         {!captured ? <>
           <button type="button" onClick={() => galleryRef.current?.click()} disabled={processing} title={text.gallery} aria-label={text.gallery} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 disabled:opacity-40"><ImageIcon size={20} /></button>
           <button type="button" onClick={handleSnap} disabled={!ready || !cameraEnabled || processing || !!cameraError} title={text.take} aria-label={text.take} className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white/20 disabled:opacity-40"><span className="h-[52px] w-[52px] rounded-full bg-white" /></button>
-          <button type="button" onClick={() => setFacingMode(mode => mode === 'environment' ? 'user' : 'environment')} disabled={processing || !cameraEnabled} title={text.flip} aria-label={text.flip} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 disabled:opacity-40"><RefreshCw size={20} /></button>
+          <button type="button" onClick={() => { setDeviceId(''); setFacingMode(mode => mode === 'environment' ? 'user' : 'environment'); }} disabled={processing || !cameraEnabled} title={text.flip} aria-label={text.flip} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 disabled:opacity-40"><RefreshCw size={20} /></button>
         </> : <div className="flex w-full gap-3">
           <button type="button" onClick={retake} className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 py-3.5 text-sm font-semibold"><RefreshCw size={16} />{text.retake}</button>
           <button type="button" onClick={() => { onCapture(captured); onClose(); }} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-semibold"><Check size={18} />{text.use}</button>

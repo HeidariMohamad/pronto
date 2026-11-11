@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getImageCrop, optimizeImage } from '../src/services/imageOptimizer.js';
+import { getImageCrop, getSquareGuide, optimizeImage } from '../src/services/imageOptimizer.js';
+
+test('square guide matches the centered crop for landscape, portrait and square frames', () => {
+  for (const [width, height] of [[1920, 1080], [1080, 1920], [1000, 1000]]) {
+    const crop = getImageCrop(width, height, 1600);
+    const guide = getSquareGuide(width, height);
+    assert.equal(parseFloat(guide.width), crop.sourceWidth / width * 100);
+    assert.equal(parseFloat(guide.height), crop.sourceHeight / height * 100);
+  }
+  assert.deepEqual(getSquareGuide(0, 0), { width: '100%', height: '100%' });
+});
 
 test('landscape and portrait frames are centered and produce square images', () => {
   assert.deepEqual(getImageCrop(1920, 1080, 1600), { x: 420, y: 0, sourceWidth: 1080, sourceHeight: 1080, width: 1080, height: 1080 });

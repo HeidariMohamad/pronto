@@ -29,7 +29,7 @@ export const getSemesterForDate = async (dateStr) => {
 // Default Settings
 export const DEFAULT_SETTINGS = {
     id: 'v8',
-    theme: 'liquid-glass', // 'liquid-glass' (default) | 'classic' | 'oled'
+    theme: 'classic', // 'classic' (default) | 'liquid-glass' | 'oled'
     language: 'pt',
     tolerance: 10, // Default 10 minutes if enabled (legacy usage, now toggle)
     toleranceMode: 'exit', // 'entry' | 'exit'

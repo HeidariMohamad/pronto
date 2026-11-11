@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useDailyRecord } from '../hooks/useDailyRecord';
 import { M2T, formatDurationHM, groupEntriesIntoSessions } from '../services/stats';
@@ -17,7 +17,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { formatPunchType } from '../services/i18n';
 import { toLocalISOString } from '../services/db';
 import { api } from '../services/api';
-import { optimizeImage } from '../services/imageOptimizer';
+import { CameraCaptureModal } from '../components/CameraCaptureModal';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 
 export const HomePage = () => {
@@ -27,8 +27,7 @@ export const HomePage = () => {
     const [entryToDelete, setEntryToDelete] = useState(null);
     const [selectedImage, setSelectedImage] = useState(null);
     const [editingTimePicker, setEditingTimePicker] = useState(null);
-    const cameraInputRef = useRef(null);
-    const cameraEntryRef = useRef(null);
+    const [cameraEntryId, setCameraEntryId] = useState(null);
     const [processingPhoto, setProcessingPhoto] = useState(false);
     const [photoMessage, setPhotoMessage] = useState('');
     const [collapsedTurns, setCollapsedTurns] = useState({});
@@ -51,21 +50,10 @@ export const HomePage = () => {
         addEntry(time, type);
     };
 
-    const openPhoneCamera = (entryId) => {
-        cameraEntryRef.current = entryId;
-        cameraInputRef.current?.click();
-    };
-
-    const handlePhonePhoto = async (event) => {
-        const file = event.target.files?.[0];
-        const entryId = cameraEntryRef.current;
-        event.target.value = '';
-        cameraEntryRef.current = null;
-        if (!file || !entryId) return;
+    const handlePhoto = async ({ blob, dataUrl }, entryId) => {
         setProcessingPhoto(true);
         setPhotoMessage(t('photo_processing'));
         try {
-            const { blob, dataUrl } = await optimizeImage(file, 1600, 0.88, true);
             await updateEntry(entryId, 'photo', dataUrl);
             if (navigator.onLine && localStorage.getItem('pronto_token')) {
                 try {
@@ -124,7 +112,6 @@ export const HomePage = () => {
 
     return (
         <div className="space-y-4 pb-28 animate-fade-in">
-            <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handlePhonePhoto} onCancel={() => { cameraEntryRef.current = null; }} />
             <div className="space-y-2">
             {/* Date Switcher */}
             <div className="home-date-switcher text-center space-y-0.5">
@@ -315,7 +302,7 @@ export const HomePage = () => {
                                                 ) : (
                                                     <button 
                                                         type="button"
-                                                        onClick={() => openPhoneCamera(item.inEntry.id)}
+                                                        onClick={() => setCameraEntryId(item.inEntry.id)}
                                                         disabled={processingPhoto}
                                                         className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all disabled:opacity-40"
                                                         title={t('take_photo')}
@@ -364,7 +351,7 @@ export const HomePage = () => {
                                                 ) : (
                                                     <button 
                                                         type="button"
-                                                        onClick={() => openPhoneCamera(item.outEntry.id)}
+                                                        onClick={() => setCameraEntryId(item.outEntry.id)}
                                                         disabled={processingPhoto}
                                                         className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 active:scale-95 flex items-center justify-center text-slate-400 hover:text-white border border-white/10 cursor-pointer transition-all disabled:opacity-40"
                                                         title={t('take_photo')}
@@ -454,6 +441,12 @@ export const HomePage = () => {
                     </div>
                 </div>, document.body
             )}
+
+            <CameraCaptureModal
+                isOpen={cameraEntryId != null}
+                onCapture={(photo) => handlePhoto(photo, cameraEntryId)}
+                onClose={() => setCameraEntryId(null)}
+            />
 
             {/* iOS Action-Sheet Style Time Picker Modal */}
             <IosTimePickerModal

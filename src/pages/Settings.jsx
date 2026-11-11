@@ -474,7 +474,7 @@ export const SettingsPage = () => {
 
             {/* Visual Theme Selection */}
             {(() => {
-                const activeTheme = (!settings?.theme || settings.theme === 'default') ? 'liquid-glass' : settings.theme;
+                const activeTheme = (!settings?.theme || settings.theme === 'default') ? 'classic' : settings.theme;
                 return (
                     <Card className="space-y-3">
                         <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('theme_title') || 'Visual Theme'}</p>
