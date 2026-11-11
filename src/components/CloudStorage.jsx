@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Cloud, 
   HardDrive, 
@@ -11,6 +12,7 @@ import {
   Image as ImageIcon,
   Calendar,
   Layers,
+  Eye,
   X
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -48,7 +50,8 @@ const copy = {
     confirmDeleteSelected: 'Are you sure you want to delete the selected items from the cloud and this device?',
     confirmDeleteAllPhotos: 'Delete ALL photos from cloud storage? Your work hours and punches will stay intact.',
     confirmDeleteAllCloud: '⚠️ DANGER: Delete ALL records, schedules, and photos from the cloud? This action cannot be undone.',
-    selectedCount: 'selected'
+    selectedCount: 'selected',
+    viewPhoto: 'View photo'
   },
   pt: { 
     title: 'Gerenciar armazenamento na nuvem', 
@@ -77,7 +80,8 @@ const copy = {
     confirmDeleteSelected: 'Tem certeza que deseja excluir os itens selecionados da nuvem e deste dispositivo?',
     confirmDeleteAllPhotos: 'Excluir TODAS as fotos da nuvem? Suas horas e registros continuarão intactos.',
     confirmDeleteAllCloud: '⚠️ PERIGO: Excluir TODOS os registros, jornadas e fotos da nuvem? Esta ação não pode ser desfeita.',
-    selectedCount: 'selecionado(s)'
+    selectedCount: 'selecionado(s)',
+    viewPhoto: 'Ver imagem'
   },
   fa: { 
     title: 'مدیریت فضای ابری', 
@@ -106,7 +110,8 @@ const copy = {
     confirmDeleteSelected: 'آیا از حذف موارد انتخاب‌شده از فضای ابری و این دستگاه اطمینان دارید؟',
     confirmDeleteAllPhotos: 'آیا تمام عکس‌ها از فضای ابری حذف شوند؟ ساعات کاری ثبت‌شده باقی خواهند ماند.',
     confirmDeleteAllCloud: '⚠️ هشدار: آیا مایلید تمام سوابق، برنامه‌ها و عکس‌ها از فضای ابری پاک شوند؟ این عمل برگشت‌پذیر نیست.',
-    selectedCount: 'مورد انتخاب شد'
+    selectedCount: 'مورد انتخاب شد',
+    viewPhoto: 'دیدن عکس'
   }
 };
 
@@ -118,13 +123,14 @@ function size(bytes) {
 }
 
 export function CloudStorage() {
-  const { lang, t } = useTranslation();
+  const { lang } = useTranslation();
   const { refreshStorage } = useAuth();
   const labels = copy[lang] || copy.en;
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [previewPhoto, setPreviewPhoto] = useState(null);
   
   // Multi-selection state
   const [selectedKeys, setSelectedKeys] = useState(new Set());
@@ -159,19 +165,13 @@ export function CloudStorage() {
 
   const selectAllSection = (collection) => {
     if (!data) return;
-    const items = collection === 'records' ? data.records
-                : collection === 'semesters' ? data.semesters
-                : [...data.files, ...(data.embeddedPhotos || [])];
-
-    const keys = items.map(item => {
-      const id = String(collection === 'records' ? item.date : item.id);
-      return `${collection}:${id}`;
-    });
-
-    const allSelected = keys.every(k => selectedKeys.has(k));
+    const keys = collection === 'photos'
+      ? [...data.files.map(item => `photos:${item.id}`), ...(data.embeddedPhotos || []).map(item => `embeddedPhotos:${item.id}`)]
+      : (collection === 'records' ? data.records : data.semesters).map(item => `${collection}:${String(collection === 'records' ? item.date : item.id)}`);
 
     setSelectedKeys(prev => {
       const next = new Set(prev);
+      const allSelected = keys.every(k => prev.has(k));
       keys.forEach(k => {
         if (allSelected) next.delete(k);
         else next.add(k);
@@ -334,7 +334,7 @@ export function CloudStorage() {
     setMessage(labels.deleting);
 
     try {
-      const result = await api.post('/api/storage/delete-batch', { deleteAll: 'photos' });
+      await api.post('/api/storage/delete-batch', { deleteAll: 'photos' });
 
       // Clean local records photos
       await db.transaction('rw', db.records, async () => {
@@ -630,7 +630,7 @@ export function CloudStorage() {
                       }}
                       className="text-xs text-blue-400 hover:text-blue-300 font-semibold"
                     >
-                      {data.files.every(f => selectedKeys.has(`photos:${f.id}`)) ? labels.deselectAll : labels.selectAll}
+                      {data.files.every(f => selectedKeys.has(`photos:${f.id}`)) && (data.embeddedPhotos || []).every(p => selectedKeys.has(`embeddedPhotos:${p.id}`)) ? labels.deselectAll : labels.selectAll}
                     </button>
                   )}
                 </summary>
@@ -651,21 +651,20 @@ export function CloudStorage() {
                           isSelected ? 'bg-blue-600/20 border-blue-500/50' : 'bg-white/5 border-white/5'
                         }`}
                       >
-                        <div className="relative">
-                          <a href={file.url} target="_blank" rel="noreferrer" className="block">
+                        <label className="relative block cursor-pointer">
                             <img src={file.url} alt={file.originalName || labels.photos} className="w-full h-24 object-cover rounded-lg" loading="lazy" />
-                          </a>
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleSelection(key)}
                             className="absolute top-1.5 left-1.5 w-4 h-4 rounded text-blue-600 cursor-pointer shadow-md"
                           />
-                        </div>
+                        </label>
 
                         <p className="text-[11px] text-slate-400 truncate">{file.originalName} · {size(file.sizeBytes)}</p>
                         
-                        <div className="flex justify-end">
+                        <div className="flex justify-between">
+                          <button type="button" onClick={() => setPreviewPhoto({ url: file.url, alt: file.originalName || labels.photos })} className="flex items-center gap-1 p-1 text-[11px] text-blue-300"><Eye size={13} />{labels.viewPhoto}</button>
                           <button 
                             type="button" 
                             disabled={busy} 
@@ -691,21 +690,20 @@ export function CloudStorage() {
                           isSelected ? 'bg-blue-600/20 border-blue-500/50' : 'bg-white/5 border-white/5'
                         }`}
                       >
-                        <div className="relative">
-                          <a href={photo.url} target="_blank" rel="noreferrer" className="block">
+                        <label className="relative block cursor-pointer">
                             <img src={photo.url} alt={`${labels.photos} ${photo.date}`} className="w-full h-24 object-cover rounded-lg" loading="lazy" />
-                          </a>
                           <input
                             type="checkbox"
                             checked={isSelected}
                             onChange={() => toggleSelection(key)}
                             className="absolute top-1.5 left-1.5 w-4 h-4 rounded text-blue-600 cursor-pointer shadow-md"
                           />
-                        </div>
+                        </label>
 
                         <p className="text-[11px] text-slate-400 truncate">{photo.date} · {size(photo.sizeBytes)}</p>
 
-                        <div className="flex justify-end">
+                        <div className="flex justify-between">
+                          <button type="button" onClick={() => setPreviewPhoto({ url: photo.url, alt: `${labels.photos} ${photo.date}` })} className="flex items-center gap-1 p-1 text-[11px] text-blue-300"><Eye size={13} />{labels.viewPhoto}</button>
                           <button 
                             type="button" 
                             disabled={busy} 
@@ -726,6 +724,14 @@ export function CloudStorage() {
             </>
           )}
         </div>
+      )}
+      {previewPhoto && createPortal(
+        <div role="dialog" aria-modal="true" aria-label={labels.viewPhoto} onClick={() => setPreviewPhoto(null)} className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/90 p-4">
+          <div className="relative max-h-[85vh] max-w-full" onClick={event => event.stopPropagation()}>
+            <img src={previewPhoto.url} alt={previewPhoto.alt} className="max-h-[80vh] max-w-full rounded-xl object-contain" />
+            <button type="button" aria-label={labels.close} onClick={() => setPreviewPhoto(null)} className="absolute right-2 top-2 rounded-full bg-black/70 p-2 text-white"><X size={20} /></button>
+          </div>
+        </div>, document.body
       )}
     </div>
   );
