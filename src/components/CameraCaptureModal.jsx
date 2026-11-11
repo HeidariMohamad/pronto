@@ -10,6 +10,11 @@ const labels = {
   fa: { square: 'عکس مربعی', auto: 'خودکار', brighter: 'روشنایی', flash: 'چراغ', close: 'بستن', camera: 'استفاده از دوربین گوشی', gallery: 'انتخاب از گالری', take: 'گرفتن عکس', flip: 'تغییر دوربین', retake: 'دوباره', use: 'استفاده از عکس', starting: 'در حال راه‌اندازی دوربین…', processing: 'در حال آماده‌سازی عکس…', denied: 'دسترسی به دوربین رد شد. آن را در تنظیمات مرورگر فعال کنید.', unavailable: 'دوربین برنامه باز نشد. می‌توانید از دوربین گوشی استفاده کنید.', failed: 'آماده‌سازی عکس ناموفق بود. دوباره تلاش کنید.' }
 };
 
+function getSavedCamera() {
+  try { return JSON.parse(localStorage.getItem('pronto_camera_preference') || '{}') || {}; }
+  catch { return {}; }
+}
+
 export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
   const { lang } = useTranslation();
   const text = labels[lang] || labels.en;
@@ -19,8 +24,8 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
   const nativeRef = useRef(null);
   const generationRef = useRef(0);
   const [cameraEnabled, setCameraEnabled] = useState(true);
-  const [facingMode, setFacingMode] = useState('environment');
-  const [deviceId, setDeviceId] = useState('');
+  const [facingMode, setFacingMode] = useState(() => getSavedCamera().facingMode === 'user' ? 'user' : 'environment');
+  const [deviceId, setDeviceId] = useState(() => getSavedCamera().deviceId || '');
   const [devices, setDevices] = useState([]);
   const [mirrored, setMirrored] = useState(false);
   const [frameSize, setFrameSize] = useState({ width: 4, height: 3 });
@@ -33,6 +38,8 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
   const [brightness, setBrightness] = useState(1);
   const [hasTorch, setHasTorch] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [canFocus, setCanFocus] = useState(false);
+  const [focusPoint, setFocusPoint] = useState(null);
 
   useEffect(() => {
     const update = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -59,14 +66,21 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
     setCameraError('');
     setHasTorch(false);
     setTorchOn(false);
+    setCanFocus(false);
+    setFocusPoint(null);
 
     const start = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) throw new Error('Camera unavailable');
-        ownedStream = await navigator.mediaDevices.getUserMedia({
-          video: { ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facingMode } }), width: { ideal: 1920 }, resizeMode: { ideal: 'none' } },
-          audio: false
+        const openCamera = selection => navigator.mediaDevices.getUserMedia({
+          video: { ...selection, width: { ideal: 1920 }, resizeMode: { ideal: 'none' } }, audio: false
         });
+        try {
+          ownedStream = await openCamera(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: { ideal: facingMode } });
+        } catch (err) {
+          if (!deviceId || !['OverconstrainedError', 'NotFoundError', 'DevicesNotFoundError'].includes(err.name)) throw err;
+          ownedStream = await openCamera({ facingMode: { ideal: facingMode } });
+        }
         if (cancelled) { ownedStream.getTracks().forEach(track => track.stop()); return; }
         streamRef.current = ownedStream;
         if (videoRef.current) {
@@ -76,6 +90,8 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
         const track = ownedStream.getVideoTracks()[0];
         const actualFacing = track?.getSettings?.().facingMode;
         const trackLabel = track?.label || '';
+        const actualId = track?.getSettings?.().deviceId || '';
+        try { localStorage.setItem('pronto_camera_preference', JSON.stringify({ deviceId: actualId, facingMode: actualFacing === 'user' ? 'user' : actualFacing === 'environment' ? 'environment' : facingMode })); } catch { /* Storage is optional. */ }
         if (!cancelled) setMirrored(actualFacing ? actualFacing === 'user' : /front|user|selfie|frontal/i.test(trackLabel) || (!deviceId && facingMode === 'user'));
         try {
           const available = await navigator.mediaDevices.enumerateDevices();
@@ -84,14 +100,11 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
         try {
           const caps = track?.getCapabilities?.() || {};
           if (!cancelled) setHasTorch(!!caps.torch);
-          const auto = {};
-          for (const key of ['exposureMode', 'focusMode', 'whiteBalanceMode']) {
-            if (Array.isArray(caps[key]) && caps[key].includes('continuous')) auto[key] = 'continuous';
-          }
-          if (typeof caps.zoom?.min === 'number') auto.zoom = caps.zoom.min;
-          if (track && Object.keys(auto).length) {
+          const supported = navigator.mediaDevices.getSupportedConstraints?.() || {};
+          if (!cancelled) setCanFocus(!!supported.pointsOfInterest && Array.isArray(caps.focusMode) && caps.focusMode.some(mode => mode === 'continuous' || mode === 'single-shot'));
+          if (track && caps.focusMode?.includes('continuous')) {
             const constraints = track.getConstraints?.() || {};
-            await track.applyConstraints({ ...constraints, advanced: [...(constraints.advanced || []), auto] });
+            await track.applyConstraints({ ...constraints, advanced: [...(constraints.advanced || []), { focusMode: 'continuous' }] });
           }
         } catch (err) {
           // Cameras that don't expose these controls still use their own defaults.
@@ -122,6 +135,23 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
       await track.applyConstraints({ ...constraints, advanced: [...advanced, { torch: next }] });
       setTorchOn(next);
     } catch (err) { console.warn('Torch unavailable:', err); }
+  };
+
+  const focusAtPoint = async (event) => {
+    if (!canFocus || captured || !ready || processing) return;
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+    const caps = track.getCapabilities?.() || {};
+    const mode = caps.focusMode?.includes('continuous') ? 'continuous' : 'single-shot';
+    const constraints = track.getConstraints?.() || {};
+    const advanced = (constraints.advanced || []).filter(item => !('focusMode' in item) && !('pointsOfInterest' in item));
+    try {
+      await track.applyConstraints({ ...constraints, advanced: [...advanced, { focusMode: mode, pointsOfInterest: [{ x: mirrored ? 1 - x : x, y }] }] });
+      setFocusPoint({ x, y });
+    } catch (err) { console.warn('Tap to focus unavailable:', err); }
   };
 
   const prepare = async (source, options, generation) => {
@@ -207,16 +237,18 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
       </div>
 
       <div className="w-full flex-1 min-h-0 flex flex-col items-center justify-center gap-3">
-        <div className="relative shrink-0 overflow-hidden rounded-3xl border border-white/25 bg-neutral-900 shadow-2xl" style={{ width: `${previewWidth}px`, maxWidth: '100%', aspectRatio: `${ratio}` }}>
+        <div onClick={focusAtPoint} className="relative shrink-0 overflow-hidden rounded-3xl border border-white/25 bg-neutral-900 shadow-2xl" style={{ width: `${previewWidth}px`, maxWidth: '100%', aspectRatio: `${ratio}` }}>
           <video ref={videoRef} autoPlay playsInline muted onLoadedMetadata={updateFrameSize} onResize={updateFrameSize} onLoadedData={() => setReady(true)} className={`absolute inset-0 h-full w-full object-contain ${mirrored ? 'scale-x-[-1]' : ''} ${captured || cameraError || !cameraEnabled ? 'invisible' : ''}`} style={{ filter: brightness === 1 ? undefined : `brightness(${brightness})` }} />
           {captured && <img src={captured.dataUrl} alt={text.square} className="absolute inset-0 h-full w-full object-cover" />}
           {!captured && !cameraError && cameraEnabled && !ready && <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-300">{text.starting}</div>}
           {!captured && cameraError && <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-sm text-slate-300">{cameraError}</div>}
           {!captured && ready && !cameraError && cameraEnabled && <div className="pointer-events-none absolute left-1/2 top-1/2 rounded-xl border-2 border-white/80" style={{ ...guide, transform: 'translate(-50%, -50%)', boxShadow: '0 0 0 9999px rgba(0,0,0,.35)' }} />}
+          {!captured && focusPoint && <div aria-hidden="true" className="pointer-events-none absolute h-12 w-12 rounded-full border-2 border-amber-300" style={{ left: `${focusPoint.x * 100}%`, top: `${focusPoint.y * 100}%`, transform: 'translate(-50%, -50%)' }} />}
           {processing && <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-sm">{text.processing}</div>}
         </div>
         {captureError && <p role="alert" className="text-center text-xs text-red-300">{captureError}</p>}
         {!captured && ready && cameraEnabled && <p className="text-center text-xs text-slate-300">{guideText}</p>}
+        {!captured && ready && cameraEnabled && canFocus && <p className="text-center text-xs text-slate-400">{lang === 'pt' ? 'Toque na imagem para focar' : lang === 'fa' ? 'برای فوکوس روی تصویر ضربه بزنید' : 'Tap the image to focus'}</p>}
         {!captured && cameraEnabled && devices.length > 1 && <select aria-label={lensText} value={deviceId || streamRef.current?.getVideoTracks()[0]?.getSettings?.().deviceId || ''} onChange={event => setDeviceId(event.target.value)} className="max-w-full rounded-lg bg-neutral-800 px-3 py-2 text-xs text-white">{devices.map((device, index) => <option key={device.deviceId} value={device.deviceId}>{device.label || `${lensText} ${index + 1}`}</option>)}</select>}
         {!captured && <button type="button" onClick={openPhoneCamera} disabled={processing} className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-2 text-xs text-slate-200"><Smartphone size={14} />{text.camera}</button>}
       </div>
@@ -227,7 +259,7 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
         {!captured ? <>
           <button type="button" onClick={() => galleryRef.current?.click()} disabled={processing} title={text.gallery} aria-label={text.gallery} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 disabled:opacity-40"><ImageIcon size={20} /></button>
           <button type="button" onClick={handleSnap} disabled={!ready || !cameraEnabled || processing || !!cameraError} title={text.take} aria-label={text.take} className="flex h-[72px] w-[72px] items-center justify-center rounded-full border-4 border-white/80 bg-white/20 disabled:opacity-40"><span className="h-[52px] w-[52px] rounded-full bg-white" /></button>
-          <button type="button" onClick={() => { setDeviceId(''); setFacingMode(mode => mode === 'environment' ? 'user' : 'environment'); }} disabled={processing || !cameraEnabled} title={text.flip} aria-label={text.flip} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 disabled:opacity-40"><RefreshCw size={20} /></button>
+          <button type="button" onClick={() => { setDeviceId(''); setFacingMode(mirrored ? 'environment' : 'user'); }} disabled={processing || !cameraEnabled} title={text.flip} aria-label={text.flip} className="flex h-12 w-12 items-center justify-center rounded-full border border-white/15 bg-white/10 disabled:opacity-40"><RefreshCw size={20} /></button>
         </> : <div className="flex w-full gap-3">
           <button type="button" onClick={retake} className="flex flex-1 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 py-3.5 text-sm font-semibold"><RefreshCw size={16} />{text.retake}</button>
           <button type="button" onClick={() => { onCapture(captured); onClose(); }} className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-blue-600 py-3.5 text-sm font-semibold"><Check size={18} />{text.use}</button>

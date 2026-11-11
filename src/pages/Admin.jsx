@@ -37,10 +37,25 @@ function formatBytes(bytes, decimals = 1) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-function prettyStoredJson(value, fallback = []) {
-  if (typeof value !== 'string') return JSON.stringify(value ?? fallback, null, 2);
-  try { return JSON.stringify(JSON.parse(value), null, 2); }
-  catch { return value; }
+function recordEntries(record) {
+  try {
+    const entries = typeof record.entries === 'string' ? JSON.parse(record.entries) : record.entries;
+    return Array.isArray(entries) ? entries : [];
+  } catch { return []; }
+}
+
+function recordPhotos(record, files) {
+  return recordEntries(record).filter(entry => {
+    if (typeof entry?.photo !== 'string') return false;
+    if (entry.photo.startsWith('data:image/')) return true;
+    try { return files.some(file => new URL(entry.photo, window.location.origin).pathname.endsWith(`/${encodeURIComponent(file.filename)}`)); }
+    catch { return false; }
+  }).length;
+}
+
+function SavedDays({ records, files, t }) {
+  if (!records.length) return <p className="text-xs text-slate-400">{t('No saved records')}</p>;
+  return <div className="divide-y divide-white/5">{records.map(record => <div key={record.date} className="flex flex-wrap items-center justify-between gap-2 py-2 text-xs"><span className="font-medium text-slate-200">{record.date}</span><span className="text-slate-400">{t('Saved punches: {count}', { count: recordEntries(record).length })} · {t('Saved photos: {count}', { count: recordPhotos(record, files) })}</span></div>)}</div>;
 }
 
 export const AdminPage = () => {
@@ -650,16 +665,16 @@ export const AdminPage = () => {
             </div>
             {userDataLoading ? <p className="text-sm text-slate-400">{t('Loading…')}</p> : <>
               <CloudBackupSummary usage={viewingUserData.storageUsage} />
-              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-purple-300">{t('Cloud schedules')} ({viewingUserData.cloud.semesters.length})</h4>
-                {viewingUserData.cloud.semesters.map(item => <div key={item.id} className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><strong>{item.name}</strong><span className="block text-xs text-slate-400">{item.startDate} – {item.endDate}</span><pre className="mt-2 whitespace-pre-wrap break-words text-xs text-slate-300">{prettyStoredJson(item.targets)}</pre></div>)}
+              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-3"><h4 className="text-sm font-semibold text-purple-300">{t('Saved semesters')} ({viewingUserData.cloud.semesters.length})</h4>
+                {viewingUserData.cloud.semesters.map(item => {
+                  const records = viewingUserData.cloud.records.filter(record => record.date >= item.startDate && record.date <= item.endDate);
+                  const photos = records.reduce((sum, record) => sum + recordPhotos(record, viewingUserData.cloud.files), 0);
+                  return <details key={item.id} className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><summary className="cursor-pointer"><strong>{item.name || t('Schedule')}</strong><span className="block mt-1 text-xs text-slate-400">{item.startDate} – {item.endDate}</span><span className="block mt-2 text-xs text-blue-300">{t('Saved days: {count}', { count: records.length })} · {t('Saved photos: {count}', { count: photos })}</span></summary><div className="mt-3 border-t border-white/10"><SavedDays records={records} files={viewingUserData.cloud.files} t={t} /></div></details>;
+                })}
                 {!viewingUserData.cloud.semesters.length && <p className="text-xs text-slate-400">{t('No saved schedules')}</p>}
+                {viewingUserData.cloud.records.some(record => !viewingUserData.cloud.semesters.some(item => record.date >= item.startDate && record.date <= item.endDate)) && <details className="rounded-xl bg-white/5 p-3 text-sm text-slate-200"><summary className="cursor-pointer font-medium">{t('Days outside semesters')}</summary><SavedDays records={viewingUserData.cloud.records.filter(record => !viewingUserData.cloud.semesters.some(item => record.date >= item.startDate && record.date <= item.endDate))} files={viewingUserData.cloud.files} t={t} /></details>}
+                <p className="text-[11px] text-slate-400">{t('Photo counts include photos attached to saved punches. Overlapping semesters can include the same day.')}</p>
               </section>
-              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-blue-300">{t('Cloud records')} ({viewingUserData.cloud.records.length})</h4>
-                {viewingUserData.cloud.records.map(record => <div key={record.date} className="rounded-xl bg-white/5 p-3 text-xs text-slate-300"><strong className="text-white">{record.date}</strong><pre className="mt-2 whitespace-pre-wrap break-words">{JSON.stringify({ entries: prettyStoredJson(record.entries), note: record.note }, null, 2)}</pre></div>)}
-                {!viewingUserData.cloud.records.length && <p className="text-xs text-slate-400">{t('No saved records')}</p>}
-              </section>
-              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-amber-300">{t('Saved settings')}</h4><pre className="whitespace-pre-wrap break-words text-xs text-slate-300">{viewingUserData.cloud.settings ? prettyStoredJson(viewingUserData.cloud.settings.data, {}) : t('No saved settings')}</pre></section>
-              <section className="rounded-2xl border border-white/10 bg-[#111d30] p-4 space-y-2"><h4 className="text-sm font-semibold text-emerald-300">{t('Cloud files')} ({viewingUserData.cloud.files.length})</h4>{viewingUserData.cloud.files.map(file => <p key={file.id} className="text-xs text-slate-300">{file.originalName} · {formatBytes(file.sizeBytes)}</p>)}</section>
             </>}
           </div>
         </div>, document.body
