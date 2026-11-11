@@ -74,7 +74,7 @@ export const Layout = ({ children }) => {
             </header>
 
             {/* Main Content */}
-            <main ref={mainRef} className="flex-1 p-4 pt-20 max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
+            <main ref={mainRef} className="flex-1 p-4 pt-[calc(4.5rem+env(safe-area-inset-top))] max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
                 <NotificationBanner />
                 {children}
             </main>

@@ -67,8 +67,10 @@ export function NotificationBanner() {
     }
   };
 
+  if (!user?.isBanned && notifications.length === 0) return null;
+
   return (
-    <div className="w-full space-y-2 mb-4">
+    <div className="w-full space-y-2">
       {/* Account Suspended / Banned Notice */}
       {user?.isBanned && (
         <div className="w-full rounded-2xl p-3.5 bg-red-500/20 border border-red-500/40 text-red-200 shadow-xl backdrop-blur-md flex items-start gap-3 animate-in fade-in">

@@ -103,9 +103,9 @@ export const HomePage = () => {
 
     return (
         <div className="space-y-4 pb-28 animate-fade-in">
-            <div className="space-y-2.5">
+            <div className="space-y-2">
             {/* Date Switcher */}
-            <div className="home-date-switcher text-center space-y-0.5 pt-1">
+            <div className="home-date-switcher text-center space-y-0.5">
                 <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">
                     {WEEKDAYS[activeDate.getDay()]}
                 </p>
@@ -139,8 +139,8 @@ export const HomePage = () => {
 
             {/* Top 3 Stat Cards */}
             <div className="grid grid-cols-3 gap-2.5">
-                <div className="theme-stat-pill p-2.5 text-center flex flex-col items-center justify-center">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                <div className="theme-stat-pill px-2 py-2 text-center flex flex-col items-center justify-center">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
                         {t('worked')}
                     </p>
                     <p className="text-xl font-bold tracking-tight text-white">
@@ -148,12 +148,12 @@ export const HomePage = () => {
                     </p>
                 </div>
 
-                <div className={`theme-stat-pill p-2.5 text-center flex flex-col items-center justify-center border ${
+                <div className={`theme-stat-pill px-2 py-2 text-center flex flex-col items-center justify-center border ${
                     isPositiveBalance 
                         ? 'border-emerald-500/30 text-emerald-400' 
                         : 'border-red-500/30 text-red-400'
                 }`}>
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
                         {t('balance')}
                     </p>
                     <p className="text-xl font-bold tracking-tight">
@@ -161,8 +161,8 @@ export const HomePage = () => {
                     </p>
                 </div>
 
-                <div className="theme-stat-pill p-2.5 text-center flex flex-col items-center justify-center">
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                <div className="theme-stat-pill px-2 py-2 text-center flex flex-col items-center justify-center">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
                         {t('journey')}
                     </p>
                     <p className="text-xl font-bold tracking-tight text-white">
@@ -173,7 +173,7 @@ export const HomePage = () => {
 
             {/* Predicted Exit Time Card */}
             {stats.prediction && (
-                <div className="theme-card p-3 relative overflow-hidden bg-gradient-to-r from-blue-600/30 via-indigo-600/20 to-purple-600/20 border-blue-400/30 shadow-lg shadow-blue-500/10">
+                <div className="theme-card px-3 py-2 relative overflow-hidden bg-gradient-to-r from-blue-600/30 via-indigo-600/20 to-purple-600/20 border-blue-400/30 shadow-lg shadow-blue-500/10">
                     <div className="flex justify-between items-center relative z-10">
                         <div>
                             <div className="flex items-center gap-1.5 text-blue-300 text-xs font-semibold uppercase tracking-wider mb-0.5">
@@ -184,7 +184,7 @@ export const HomePage = () => {
                                 {M2T(stats.prediction)}
                             </h2>
                         </div>
-                        <Fingerprint className="w-12 h-12 text-blue-400/15" />
+                        <Fingerprint className="w-10 h-10 text-blue-400/15" />
                     </div>
                 </div>
             )}
