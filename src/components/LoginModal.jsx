@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
+import { db } from '../services/db';
 import { Fingerprint, ShieldCheck, AlertCircle } from 'lucide-react';
 
 export const LoginModal = () => {
   const { loginWithGoogle } = useAuth();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const [error, setError] = useState('');
 
   // Initialize Google Identity Services if client ID is set
   useEffect(() => {
-    /* global google */
     const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
     if (window.google?.accounts?.id && googleClientId) {
@@ -42,6 +42,18 @@ export const LoginModal = () => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
       <div className="w-full max-w-md bg-[#0d1520] border border-white/10 rounded-3xl p-6 shadow-2xl text-center space-y-6">
+        <fieldset className="space-y-2 text-left">
+          <legend className="text-xs font-semibold uppercase tracking-wider text-slate-400">{t('lang_title')}</legend>
+          <div className="grid grid-cols-3 gap-2" role="group" aria-label={t('lang_title')}>
+            {[[ 'pt', 'Português' ], [ 'en', 'English' ], [ 'fa', 'فارسی' ]].map(([code, label]) => (
+              <button key={code} type="button" lang={code} aria-pressed={lang === code}
+                onClick={async () => { await db.settings.update('v8', { language: code }); sessionStorage.setItem('pronto_login_language', code); }}
+                className={`rounded-xl border px-2 py-2 text-sm transition-colors ${lang === code ? 'bg-[var(--primary)] border-transparent text-white' : 'border-white/10 text-slate-300 hover:bg-white/5'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
         
         {/* App Icon */}
         <div className="w-16 h-16 rounded-2xl bg-[var(--primary)]/20 border border-[var(--primary)]/30 mx-auto flex items-center justify-center text-[var(--primary)] shadow-lg shadow-[var(--primary)]/10">

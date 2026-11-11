@@ -11,7 +11,7 @@ process.env.DB_PATH = ':memory:';
 process.env.JWT_SECRET = 'cloud-storage-test-secret';
 const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pronto-storage-test-'));
 process.env.UPLOAD_DIR = uploadDir;
-const { db, upsertUser, upsertRecord, getRecords, getDeletedItems, addFileRecord, embeddedPhotoKey: serverPhotoKey } = await import('../server/db.js');
+const { db, upsertUser, upsertRecord, upsertSettings, getSettings, getRecords, getDeletedItems, addFileRecord, embeddedPhotoKey: serverPhotoKey } = await import('../server/db.js');
 const { embeddedPhotoKey: clientPhotoKey } = await import('../src/services/mergeData.js');
 const { generateToken, requireAuth } = await import('../server/routes/auth.js');
 const { default: storage, authorizeStoredUpload } = await import('../server/routes/storage.js');
@@ -145,9 +145,14 @@ test('batch delete and mass cleanup endpoints work reliably', async () => {
   assert.equal(remaining.note, 'day 2'); // Hours & notes stay intact
 
   // Test wiping all cloud data
+  upsertSettings(user, { language: 'en' }, Date.now());
+  upsertSettings('user-b', { language: 'fa' }, Date.now());
   const allRes = await request(user, '/api/storage/delete-batch', { deleteAll: 'all' });
   assert.equal(allRes.status, 200);
   assert.equal(getRecords(user).length, 0);
+  assert.equal(getSettings(user), null);
+  assert.equal(allRes.data.storageUsage.totalBytes, 0);
+  assert.equal(getSettings('user-b').language, 'fa');
 });
 
 test('sync push strictly blocks uploads that exceed user storage quota', async () => {

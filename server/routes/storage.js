@@ -205,6 +205,7 @@ router.post('/delete-batch', (req, res) => {
           markDeleted(userId, 'photos', `/uploads/${userId}/${f.filename}`);
         }
         db.prepare('DELETE FROM files WHERE user_id = ?').run(userId);
+        db.prepare('DELETE FROM settings WHERE user_id = ?').run(userId);
       });
 
       // Remove files from disk

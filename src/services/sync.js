@@ -155,7 +155,12 @@ export async function pullAllFromServer() {
     }
 
     if (data.settings) {
-      await db.settings.put({ ...data.settings, id: 'v8' });
+      const loginLanguage = sessionStorage.getItem('pronto_login_language');
+      await db.settings.put({ ...data.settings, id: 'v8', ...(loginLanguage ? { language: loginLanguage } : {}) });
+      if (loginLanguage) {
+        sessionStorage.removeItem('pronto_login_language');
+        await queueSync('settings', 'v8');
+      }
     }
 
     setSyncStatus('idle');

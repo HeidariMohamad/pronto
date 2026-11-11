@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 import { db } from '../services/db';
+import { pauseSync, resumeSync } from '../services/sync';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
 import { embeddedPhotoKey } from '../services/mergeData';
@@ -367,6 +368,7 @@ export function CloudStorage() {
     setBusy(true);
     setMessage(labels.deleting);
 
+    await pauseSync();
     try {
       await api.post('/api/storage/delete-batch', { deleteAll: 'all' });
 
@@ -385,6 +387,7 @@ export function CloudStorage() {
       console.error('Wipe all cloud data failed:', err);
       setMessage(err.message || labels.error);
     } finally {
+      resumeSync();
       setBusy(false);
     }
   };
