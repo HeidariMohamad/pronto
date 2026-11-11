@@ -1,8 +1,23 @@
 import { Router } from 'express';
 import { requireAuth } from './auth.js';
-import { getUserNotifications, dismissNotification } from '../db.js';
+import { getUserNotifications, dismissNotification, getUserById, createSupportMessage, countRecentSupportMessages } from '../db.js';
 
 const router = Router();
+
+// The sender is taken from the authenticated session, never from the request body.
+router.post('/contact', requireAuth, (req, res) => {
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
+  if (!message || message.length > 4000) return res.status(400).json({ error: 'Message must contain between 1 and 4000 characters.' });
+  if (!getUserById(req.user.id)) return res.status(401).json({ error: 'Account not found.' });
+  try {
+    if (countRecentSupportMessages(req.user.id, Date.now() - 60 * 60 * 1000) >= 10) return res.status(429).json({ error: 'Too many messages. Please try again later.' });
+    createSupportMessage(req.user.id, message);
+    return res.status(201).json({ success: true });
+  } catch (err) {
+    console.error('Contact message error:', err);
+    return res.status(500).json({ error: 'Failed to send message.' });
+  }
+});
 
 // Get active notifications for current user (including broadcasts)
 router.get('/', requireAuth, (req, res) => {

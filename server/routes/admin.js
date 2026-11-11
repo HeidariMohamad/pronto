@@ -9,10 +9,25 @@ import {
   banUser,
   createNotification,
   getAllNotifications,
-  deleteNotification
+  deleteNotification,
+  getSupportMessages,
+  deleteSupportMessage
 } from '../db.js';
 
 const router = Router();
+
+router.get('/messages', requireAdmin, (req, res) => {
+  try { res.json({ messages: getSupportMessages() }); }
+  catch (err) { console.error('Fetch messages error:', err); res.status(500).json({ error: 'Failed to fetch messages' }); }
+});
+
+router.delete('/messages/:id', requireAdmin, (req, res) => {
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'Invalid message id' });
+  try {
+    if (!deleteSupportMessage(Number(req.params.id))) return res.status(404).json({ error: 'Message not found' });
+    return res.json({ success: true });
+  } catch (err) { console.error('Delete message error:', err); return res.status(500).json({ error: 'Failed to delete message' }); }
+});
 
 router.get('/metrics', requireAdmin, (req, res) => {
   try {

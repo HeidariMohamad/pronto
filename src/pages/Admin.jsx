@@ -41,6 +41,8 @@ export const AdminPage = () => {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [inbox, setInbox] = useState([]);
+  const [inboxError, setInboxError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -72,13 +74,15 @@ export const AdminPage = () => {
     setLoading(true);
     setError('');
     try {
-      const [resMetrics, resNotifs] = await Promise.all([
+      const [resMetrics, resNotifs, resInbox] = await Promise.all([
         api.get('/api/admin/metrics'),
-        api.get('/api/admin/notifications').catch(() => ({ notifications: [] }))
+        api.get('/api/admin/notifications').catch(() => ({ notifications: [] })),
+        api.get('/api/admin/messages').then(result => { setInboxError(''); return result; }).catch(() => { setInboxError('Could not load user messages. Refresh to try again.'); return null; })
       ]);
 
       setData(resMetrics);
       setNotifications(resNotifs?.notifications || []);
+      if (resInbox) setInbox(resInbox.messages || []);
       if (resMetrics.defaultLimitMb) {
         setDefaultLimitInput(String(resMetrics.defaultLimitMb));
       }
@@ -203,6 +207,13 @@ export const AdminPage = () => {
     }
   };
 
+  const handleDeleteMessage = async (id) => {
+    try {
+      await api.delete(`/api/admin/messages/${id}`);
+      setInbox(prev => prev.filter(message => message.id !== id));
+    } catch (err) { setError(err.message || 'Failed to delete message'); }
+  };
+
   if (!isAdmin) return null;
 
   const summary = data?.summary || {
@@ -307,6 +318,20 @@ export const AdminPage = () => {
           <p className="text-2xl font-bold text-white">{formatBytes(summary.totalBytes)}</p>
         </Card>
       </div>
+
+      <Card className="space-y-3 bg-white/5 border border-white/10">
+        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-300"><MessageSquare size={15} />User messages ({inbox.length})</div>
+        {inboxError && <p role="alert" className="text-xs text-red-300">{inboxError}</p>}
+        {!inboxError && inbox.length === 0 && <p className="text-xs text-slate-500">No messages from users yet.</p>}
+        <div className="space-y-2 max-h-72 overflow-y-auto">
+          {inbox.map(message => <div key={message.id} className="rounded-xl bg-black/40 border border-white/5 p-3 space-y-2">
+            <div className="flex justify-between gap-2"><div className="min-w-0"><p className="text-xs font-semibold text-white break-words">{message.senderName || message.senderEmail}</p><p className="text-[10px] text-slate-400 break-all">{message.senderEmail} · {new Date(message.createdAt).toLocaleString()}</p></div>
+              <button type="button" onClick={() => handleDeleteMessage(message.id)} title="Delete message" aria-label="Delete message" className="p-1 text-red-400"><Trash2 size={15} /></button></div>
+            <p className="text-xs text-slate-200 whitespace-pre-wrap break-words">{message.message}</p>
+            <button type="button" onClick={() => { setMessageRecipient(message.userId); setMessageTitle('Reply'); setMessageBody(''); setIsComposeOpen(true); }} className="text-xs font-semibold text-blue-400 hover:text-blue-300">Reply</button>
+          </div>)}
+        </div>
+      </Card>
 
       {/* Announcements / Notifications Section */}
       <Card className="space-y-3 bg-white/5 border border-white/10">

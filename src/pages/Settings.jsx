@@ -14,6 +14,7 @@ import { formatPunchType } from '../services/i18n';
 import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
+import { ContactAdmin } from '../components/ContactAdmin';
 
 const appVersion = '0.2.0';
 
@@ -456,6 +457,8 @@ export const SettingsPage = () => {
                     <CloudStorage />
                 </Card>
             )}
+
+            {user && <ContactAdmin />}
 
             {/* Data Backup */}
             <Card className="space-y-4">

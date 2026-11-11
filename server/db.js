@@ -125,6 +125,15 @@ db.exec(`
     FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS support_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    message TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_support_messages_user_time ON support_messages(user_id, created_at);
+
   CREATE TABLE IF NOT EXISTS notification_reads (
     notification_id TEXT,
     user_id TEXT,
@@ -277,6 +286,25 @@ export function banUser(userId, isBanned, reason = '') {
 }
 
 // Notifications & Messaging
+export function createSupportMessage(userId, message) {
+  const result = db.prepare('INSERT INTO support_messages (user_id, message, created_at) VALUES (?, ?, ?)').run(userId, message, Date.now());
+  return Number(result.lastInsertRowid);
+}
+
+export function countRecentSupportMessages(userId, since) {
+  return db.prepare('SELECT COUNT(*) AS count FROM support_messages WHERE user_id = ? AND created_at > ?').get(userId, since).count;
+}
+
+export function getSupportMessages() {
+  return db.prepare(`SELECT m.id, m.user_id AS userId, m.message, m.created_at AS createdAt,
+    u.name AS senderName, u.email AS senderEmail
+    FROM support_messages m JOIN users u ON u.id = m.user_id ORDER BY m.created_at DESC, m.id DESC LIMIT 500`).all();
+}
+
+export function deleteSupportMessage(id) {
+  return db.prepare('DELETE FROM support_messages WHERE id = ?').run(id).changes;
+}
+
 export function createNotification({ id, userId = null, title, message, type = 'info', createdBy = null }) {
   const notifId = id || `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const now = Date.now();
