@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { db } from '../services/db';
 import { M2T, T2M } from '../services/stats';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/UI';
 import { useTranslation } from '../hooks/useTranslation';
-import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Sparkles, Sliders } from 'lucide-react';
+import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Sparkles, Sliders, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { triggerSync, queueSync } from '../services/sync';
@@ -14,7 +14,8 @@ import { formatPunchType } from '../services/i18n';
 import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
-import { version as appVersion } from '../../package.json';
+
+const appVersion = '0.2.0';
 
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
@@ -288,7 +289,7 @@ export const SettingsPage = () => {
             a.click();
             setBackupMsg('Backup saved!');
             setTimeout(() => setBackupMsg(''), 3000);
-        } catch (e) {
+        } catch {
             setBackupMsg('Error exporting');
         }
     };
