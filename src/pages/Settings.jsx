@@ -15,6 +15,7 @@ import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
 import { ContactAdmin } from '../components/ContactAdmin';
+import { refreshApp } from '../services/appUpdate';
 import { DeviceBackupStatus } from '../components/BackupStatus';
 
 const appVersion = '0.2.0';
@@ -329,7 +330,7 @@ export const SettingsPage = () => {
                 <h2 className="text-2xl font-light">{t('settings_title')}</h2>
                 <button
                     type="button"
-                    onClick={() => window.location.reload()}
+                    onClick={refreshApp}
                     className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-300 hover:text-white transition-all flex items-center gap-1.5 text-xs"
                 >
                     <RefreshCw size={14} />
