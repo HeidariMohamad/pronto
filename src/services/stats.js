@@ -178,9 +178,8 @@ export const calculateDailyStats = (
 
         if (isLastShift) {
             // 5. If the current shift is the last one of the day:
-            // suggested exit = current real entry + remaining - tolerance
-            const effectiveRemaining = Math.max(0, remainingDayTime - tolerance);
-            prediction = lastIn + effectiveRemaining;
+            // Completed shifts already include their tolerance credit in worked.
+            prediction = lastIn + remainingDayTime;
         } else {
             // 6. If there is still another planned shift on the same day:
             // Use the planned duration of that specific shift - tolerance

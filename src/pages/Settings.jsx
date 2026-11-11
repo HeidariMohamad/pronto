@@ -207,24 +207,57 @@ export const SettingsPage = () => {
         reader.onload = async (ev) => {
             try {
                 const data = JSON.parse(ev.target.result);
-                if (data.records) {
-                    await db.records.clear();
-                    await db.records.bulkAdd(data.records);
+                if (!data || typeof data !== 'object' ||
+                    (data.records !== undefined && !Array.isArray(data.records)) ||
+                    (data.semesters !== undefined && !Array.isArray(data.semesters)) ||
+                    (data.settings !== undefined && !Array.isArray(data.settings)) ||
+                    (!data.records && !data.semesters && !data.settings)) {
+                    throw new Error('Invalid backup format');
                 }
-                if (data.settings && data.settings[0]) {
-                    const s = { ...data.settings[0], id: 'v8' };
-                    await db.settings.put(s);
+                const restoredAt = Date.now();
+                const records = data.records?.map(record => ({ ...record, updatedAt: restoredAt }));
+                const semesters = data.semesters?.map(semester => ({ ...semester, updatedAt: restoredAt }));
+                const restoredSettings = data.settings?.[0] ? { ...data.settings[0], id: 'v8', updatedAt: restoredAt } : null;
+                await db.transaction('rw', db.records, db.settings, db.semesters, db.pending_sync, async () => {
+                    const pending = [];
+                    if (records) {
+                        await db.records.clear();
+                        await db.records.bulkAdd(records);
+                        for (const record of records) {
+                            pending.push({ collection: 'records', docId: String(record.date), action: 'upsert', timestamp: restoredAt });
+                        }
+                    }
+                    if (restoredSettings) {
+                        await db.settings.put(restoredSettings);
+                        pending.push({ collection: 'settings', docId: 'v8', action: 'upsert', timestamp: restoredAt });
+                    }
+                    if (semesters) {
+                        await db.semesters.clear();
+                        const ids = await db.semesters.bulkAdd(semesters, { allKeys: true });
+                        for (const id of ids) {
+                            pending.push({ collection: 'semesters', docId: String(id), action: 'upsert', timestamp: restoredAt });
+                        }
+                    }
+                    if (pending.length) await db.pending_sync.bulkAdd(pending);
+                });
+                setBackupMsg('Backup restored locally. Syncing to the cloud...');
+                if (!navigator.onLine || !localStorage.getItem('pronto_token')) {
+                    setBackupMsg('Backup restored locally. It will sync when you are signed in and online.');
+                } else {
+                    try {
+                        await triggerSync();
+                        await refreshStorage();
+                        setBackupMsg('Backup restored and synced.');
+                    } catch {
+                        setBackupMsg('Backup restored locally. Cloud sync failed; use Sync now to retry.');
+                    }
                 }
-                if (data.semesters) {
-                    await db.semesters.clear();
-                    await db.semesters.bulkAdd(data.semesters);
-                }
-                setBackupMsg('Data restored! Reloading...');
-                setTimeout(() => window.location.reload(), 1500);
             } catch (err) {
-                setBackupMsg('Invalid file');
+                console.error('Backup restore failed:', err);
+                setBackupMsg('Backup could not be restored. Existing local data was kept.');
             }
         };
+        reader.onerror = () => setBackupMsg('The backup file could not be read.');
         reader.readAsText(file);
     };
 

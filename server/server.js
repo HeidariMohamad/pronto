@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '.env') });
 dotenv.config(); // fallback to current working directory
 
-import authRoutes from './routes/auth.js';
+import authRoutes, { requireAuth } from './routes/auth.js';
 import syncRoutes from './routes/sync.js';
 import uploadRoutes from './routes/upload.js';
 import adminRoutes from './routes/admin.js';
@@ -32,6 +32,8 @@ app.use(cors({
   credentials: true
 }));
 app.use(cookieParser());
+// Large legacy records can include embedded photos. Authenticate before parsing them.
+app.use('/api/sync', requireAuth, express.json({ limit: '150mb' }));
 app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
@@ -52,6 +54,9 @@ app.use('/api/admin', adminRoutes);
 // Error handler
 app.use((err, req, res, next) => {
   console.error('Unhandled server error:', err);
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'Request is too large to synchronize' });
+  }
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
