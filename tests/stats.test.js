@@ -49,3 +49,23 @@ test('an open shift and tolerance are calculated from the paired sessions', () =
   assert.equal(stats.prediction, 1310);
   assert.equal(stats.isOpen, true);
 });
+
+test('daily tolerance is applied once across multiple completed shifts', () => {
+  const entries = [
+    { type: 'In 1', time: '07:00' }, { type: 'Out 1', time: '11:00' },
+    { type: 'In 2', time: '18:00' }, { type: 'Out 2', time: '22:00' }
+  ];
+  const withTolerance = calculateDailyStats(entries, [240, 240], 10);
+  assert.equal(withTolerance.worked, 490);
+  assert.equal(withTolerance.balance, 10);
+  assert.equal(calculateDailyStats(entries, [240, 240], 0).worked, 480);
+});
+
+test('exit predictions use the daily allowance only once', () => {
+  const firstShift = [{ type: 'In 1', time: '07:00' }];
+  assert.equal(calculateDailyStats(firstShift, [240, 240], 10).prediction, 650);
+  assert.equal(calculateDailyStats(firstShift, [480], 10).prediction, 890);
+  const secondShift = [...firstShift, { type: 'Out 1', time: '11:00' }, { type: 'In 2', time: '18:00' }];
+  assert.equal(calculateDailyStats(secondShift, [240, 240], 10).prediction, 1310);
+  assert.equal(calculateDailyStats([], [480], 10).worked, 0);
+});

@@ -43,3 +43,19 @@ test('image processing returns the actual encoded dimensions and applies mirrori
     Object.assign(globalThis, previous);
   }
 });
+
+test('new photos retry with a smaller image when the encoded photo exceeds 200 KB', async () => {
+  const previous = { Image: globalThis.Image, FileReader: globalThis.FileReader, document: globalThis.document };
+  const sizes = [];
+  globalThis.Image = class { naturalWidth = 3000; naturalHeight = 3000; set src(value) { queueMicrotask(() => this.onload()); } };
+  globalThis.FileReader = class { readAsDataURL() { this.result = 'data:image/webp;base64,eA=='; queueMicrotask(() => this.onload()); } };
+  const context = { drawImage() {} };
+  globalThis.document = { createElement: () => ({ width: 0, height: 0, getContext: () => context, toBlob(callback, type, quality) { sizes.push([this.width, quality]); callback(new Blob([new Uint8Array(sizes.length === 1 ? 210000 : 100000)], { type })); } }) };
+  try {
+    const result = await optimizeImage('data:image/png;base64,eA==');
+    assert.equal(sizes.length, 2);
+    assert.equal(sizes[0][0], 1024);
+    assert.equal(result.width, 819);
+    assert.ok(result.sizeBytes <= 200 * 1024);
+  } finally { Object.assign(globalThis, previous); }
+});

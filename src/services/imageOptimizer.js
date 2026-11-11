@@ -1,4 +1,4 @@
-const MAX_PHOTO_BYTES = 4.75 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 200 * 1024;
 
 // The viewfinder displays the entire frame; this guide marks the saved square.
 export function getSquareGuide(width, height) {
@@ -25,9 +25,8 @@ export function getImageCrop(width, height, maxDimension, cropSquare = true) {
   };
 }
 
-// Encode once from the original. Only retry at a smaller size if the server's
-// per-photo upload limit would otherwise reject the image.
-export async function optimizeImage(source, maxDimension = 1600, quality = 0.88, cropSquare = true, options = {}) {
+// Keep photos readable while avoiding large uploads and device backups.
+export async function optimizeImage(source, maxDimension = 1024, quality = 0.75, cropSquare = true, options = {}) {
   const objectUrl = typeof source === 'string' ? null : URL.createObjectURL(source);
   try {
     const image = await new Promise((resolve, reject) => {
@@ -60,7 +59,7 @@ export async function optimizeImage(source, maxDimension = 1600, quality = 0.88,
       });
       if (blob.size <= MAX_PHOTO_BYTES) break;
       dimension = Math.round(dimension * 0.8);
-      outputQuality = Math.max(0.7, outputQuality - 0.05);
+      outputQuality = Math.max(0.55, outputQuality - 0.07);
     }
     if (blob.size > MAX_PHOTO_BYTES) throw new Error('Photo is too large to upload');
     const dataUrl = await new Promise((resolve, reject) => {

@@ -124,10 +124,15 @@ export const calculateDailyStats = (
             lastIn = T2M(session.inEntry.time);
             isOpen = true;
         } else if (session.inEntry && session.outEntry && session.durationMinutes !== null) {
-            worked += session.durationMinutes + Math.max(0, tolerance);
+            worked += session.durationMinutes;
             completedSessions++;
         }
     });
+
+    // The allowance applies once per day, after the first completed shift.
+    const dailyTolerance = Math.max(0, tolerance);
+    const appliedTolerance = completedSessions > 0 ? dailyTolerance : 0;
+    worked += appliedTolerance;
 
     // If currently open and today, add active session time
     let currentSessionWorked = 0;
@@ -144,21 +149,22 @@ export const calculateDailyStats = (
     let prediction = null;
 
     if (isOpen && lastIn !== null) {
-        const remainingDayTime = Math.max(0, totalTarget - worked);
+        const unusedTolerance = dailyTolerance - appliedTolerance;
+        const remainingDayTime = Math.max(0, totalTarget - worked - unusedTolerance);
 
         // Determine if current shift is the last planned shift of the day
         const isLastShift = plannedShifts.length <= 1 || completedSessions >= (plannedShifts.length - 1);
 
         if (isLastShift) {
             // 5. If the current shift is the last one of the day:
-            // Completed shifts already include their tolerance credit in worked.
+            // Include the allowance only if it has not already been applied.
             prediction = lastIn + remainingDayTime;
         } else {
             // 6. If there is still another planned shift on the same day:
-            // Use the planned duration of that specific shift - tolerance
+            // Use the planned duration less any allowance not yet applied.
             const currentPlannedShift = plannedShifts[completedSessions];
             const shiftDuration = currentPlannedShift ? currentPlannedShift.duration : (plannedShifts[0]?.duration || 0);
-            const effectiveShiftDuration = Math.max(0, shiftDuration - tolerance);
+            const effectiveShiftDuration = Math.max(0, shiftDuration - unusedTolerance);
             prediction = lastIn + effectiveShiftDuration;
         }
     }

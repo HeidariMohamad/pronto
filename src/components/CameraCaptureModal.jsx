@@ -155,7 +155,7 @@ export function CameraCaptureModal({ isOpen, onCapture, onClose }) {
   };
 
   const prepare = async (source, options, generation) => {
-    const photo = await optimizeImage(source, 1600, 0.88, true, options);
+    const photo = await optimizeImage(source, 1024, 0.75, true, options);
     if (generation === generationRef.current) setCaptured(photo);
   };
 

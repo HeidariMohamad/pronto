@@ -1,5 +1,6 @@
 import { db } from './db';
 import { api } from './api';
+import { optimizeImage } from './imageOptimizer';
 
 let syncListeners = new Set();
 let currentStatus = 'idle'; // 'idle' | 'syncing' | 'offline' | 'error'
@@ -179,7 +180,6 @@ export async function migrateLocalHistory(onProgress) {
   const allSemesters = await db.semesters.toArray();
   const settings = await db.settings.get('v8');
 
-  const totalSteps = allRecords.length + 2; // +1 for settings/semesters, +1 for finalize
   let completed = 0;
 
   if (onProgress) {
@@ -191,7 +191,32 @@ export async function migrateLocalHistory(onProgress) {
     });
   }
 
-  await pushBatches(allRecords.map(value => ({ collection: 'records', value })), async (batch) => {
+  const prepared = [];
+  for (const record of allRecords) {
+    const entries = [];
+    for (const entry of record.entries || []) {
+      if (typeof entry?.photo === 'string' && entry.photo.startsWith('data:image/')) {
+        try {
+          const optimized = await optimizeImage(entry.photo, 1024, 0.75, false);
+          entries.push(optimized.dataUrl.length < entry.photo.length ? { ...entry, photo: optimized.dataUrl } : entry);
+        } catch (err) {
+          console.warn('Could not optimize a migration photo; keeping the original:', err);
+          entries.push(entry);
+        }
+      } else entries.push(entry);
+    }
+    prepared.push({ collection: 'records', value: { ...record, entries }, original: record });
+  }
+
+  await pushBatches(prepared, async (batch) => {
+    await db.transaction('rw', db.records, async () => {
+      for (const item of batch) {
+        const current = await db.records.get(item.original.date);
+        if (current && JSON.stringify(current) === JSON.stringify(item.original)) {
+          await db.records.put(item.value);
+        }
+      }
+    });
     completed += batch.length;
     const percent = Math.min(92, Math.max(8, Math.round((completed / (allRecords.length || 1)) * 88)));
     if (onProgress) {
