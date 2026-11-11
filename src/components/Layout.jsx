@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Fingerprint, Sliders, ShieldCheck } from 'lucide-react';
+import { Fingerprint, Sliders, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { subscribeSyncStatus } from '../services/sync';
 import { useAuth } from '../context/AuthContext';
 import { NotificationBanner } from './NotificationBanner';
+import { refreshApp } from '../services/appUpdate';
 
 export const Layout = ({ children }) => {
     const { t } = useTranslation();
     const { isAdmin } = useAuth();
     const [syncStatus, setSyncStatus] = useState('idle');
     const mainRef = useRef(null);
+    const pullStart = useRef(null);
+    const [pullDistance, setPullDistance] = useState(0);
+    const [refreshing, setRefreshing] = useState(false);
     const location = useLocation();
 
     useEffect(() => {
@@ -52,6 +56,37 @@ export const Layout = ({ children }) => {
 
     const statusInfo = getStatusIndicator();
 
+    const handleTouchStart = (event) => {
+        if (refreshing || event.touches.length !== 1 || event.target.closest('button, input, textarea, select, [role="dialog"]')) return;
+        const root = document.getElementById('root');
+        if ((root?.scrollTop || 0) > 0 || (mainRef.current?.scrollTop || 0) > 0) return;
+        let element = event.target;
+        while (element && element !== mainRef.current) {
+            if (element.scrollTop > 0) return;
+            element = element.parentElement;
+        }
+        pullStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
+    };
+    const handleTouchMove = (event) => {
+        if (!pullStart.current || event.touches.length !== 1) return;
+        const dy = event.touches[0].clientY - pullStart.current.y;
+        const dx = event.touches[0].clientX - pullStart.current.x;
+        if (Math.abs(dx) > Math.abs(dy) || (mainRef.current?.scrollTop || 0) > 0 || (document.getElementById('root')?.scrollTop || 0) > 0) {
+            pullStart.current = null;
+            setPullDistance(0);
+            return;
+        }
+        setPullDistance(Math.min(90, Math.max(0, dy)));
+    };
+    const handleTouchEnd = () => {
+        pullStart.current = null;
+        if (pullDistance >= 70 && !refreshing) {
+            setRefreshing(true);
+            refreshApp();
+        }
+        setPullDistance(0);
+    };
+
     return (
         <div className="min-h-[100dvh] flex flex-col relative text-[var(--on-container)] transition-colors duration-200">
 
@@ -74,7 +109,8 @@ export const Layout = ({ children }) => {
             </header>
 
             {/* Main Content */}
-            <main ref={mainRef} className="flex-1 p-4 pt-[calc(4.5rem+env(safe-area-inset-top))] max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
+            {(pullDistance > 10 || refreshing) && <div role="status" aria-live="polite" className="fixed top-[calc(4.5rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-[#1b263b] border border-white/10 px-3 py-2 shadow-xl text-xs text-slate-200"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />{refreshing ? t('Refreshing…') : pullDistance >= 70 ? t('Release to refresh') : t('Pull to refresh')}</div>}
+            <main ref={mainRef} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={() => { pullStart.current = null; setPullDistance(0); }} className="flex-1 p-4 pt-[calc(4.5rem+env(safe-area-inset-top))] max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
                 <NotificationBanner />
                 {children}
             </main>

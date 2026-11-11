@@ -13,6 +13,7 @@ export const LoginModal = () => {
   useEffect(() => {
     const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
+    const renderGoogleButton = () => {
     if (window.google?.accounts?.id && googleClientId) {
       window.google.accounts.id.initialize({
         client_id: googleClientId,
@@ -21,23 +22,31 @@ export const LoginModal = () => {
             setError('');
             await loginWithGoogle(response.credential);
           } catch (err) {
-            setError(err.message || 'Failed to sign in with Google');
+            console.error('Google sign-in failed:', err);
+            setError('Failed to sign in with Google');
           }
         }
       });
 
       const btnContainer = document.getElementById('google-signin-btn');
       if (btnContainer) {
+        btnContainer.replaceChildren();
         window.google.accounts.id.renderButton(btnContainer, {
           theme: 'filled_blue',
           size: 'large',
           text: 'signin_with',
           shape: 'pill',
-          width: 280
+          width: 280,
+          locale: lang === 'pt' ? 'pt_BR' : lang
         });
       }
     }
-  }, [loginWithGoogle]);
+    };
+    renderGoogleButton();
+    const script = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    script?.addEventListener('load', renderGoogleButton);
+    return () => script?.removeEventListener('load', renderGoogleButton);
+  }, [loginWithGoogle, lang]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
@@ -81,7 +90,7 @@ export const LoginModal = () => {
         {error && (
           <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 flex items-center gap-2 text-xs text-red-300 text-left">
             <AlertCircle size={16} className="shrink-0 text-red-400" />
-            <span>{error}</span>
+            <span>{t(error)}</span>
           </div>
         )}
 
@@ -91,7 +100,7 @@ export const LoginModal = () => {
         </div>
 
         <p className="text-[11px] text-slate-500">
-          Private & Secure • Self-hosted data storage
+          {t('Private & Secure · Self-hosted data storage')}
         </p>
       </div>
     </div>

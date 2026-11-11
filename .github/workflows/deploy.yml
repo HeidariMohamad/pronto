@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
@@ -28,6 +32,11 @@ jobs:
           test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "Missing VITE_GOOGLE_CLIENT_ID repository variable"; exit 1; }
           npm run build
 
+      # Install every precached asset before publishing the service worker that
+      # references it, so existing installations never see a partial release.
+      - name: Stage service worker
+        run: mv dist/sw.js sw-to-publish.js
+
       - name: Deploy Frontend to Server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -38,6 +47,27 @@ jobs:
           source: "dist/*"
           target: "/var/www/pronto"
           strip_components: 1
+
+      - name: Publish service worker
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "sw-to-publish.js"
+          target: "/var/www/pronto"
+
+      - name: Activate service worker file
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+            mv /var/www/pronto/sw-to-publish.js /var/www/pronto/sw.js
 
       - name: Deploy Backend to Server
         uses: appleboy/scp-action@v0.1.7

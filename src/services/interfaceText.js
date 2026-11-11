@@ -1,5 +1,10 @@
 export const interfaceText = {
   "en": {
+    "Failed to sign in with Google": "Failed to sign in with Google",
+    "Private & Secure ? Self-hosted data storage": "Private & Secure ? Self-hosted data storage",
+    "Refreshing?": "Refreshing?",
+    "Release to refresh": "Release to refresh",
+    "Pull to refresh": "Pull to refresh",
     "Cloud backup coverage": "Cloud backup coverage",
     "Stored in cloud: {size} MB ? {records} record days ? {files} files": "Stored in cloud: {size} MB ? {records} record days ? {files} files",
     "Saved record dates: {from} to {to}": "Saved record dates: {from} to {to}",
@@ -164,6 +169,11 @@ export const interfaceText = {
     "Loading…": "Loading…"
   },
   "pt": {
+    "Failed to sign in with Google": "N?o foi poss?vel entrar com o Google",
+    "Private & Secure ? Self-hosted data storage": "Privado e seguro ? Dados armazenados em servidor pr?prio",
+    "Refreshing?": "Atualizando?",
+    "Release to refresh": "Solte para atualizar",
+    "Pull to refresh": "Puxe para atualizar",
     "Cloud backup coverage": "Cobertura do backup na nuvem",
     "Stored in cloud: {size} MB ? {records} record days ? {files} files": "Na nuvem: {size} MB ? {records} dias de registros ? {files} arquivos",
     "Saved record dates: {from} to {to}": "Datas dos registros salvos: {from} a {to}",
@@ -328,6 +338,11 @@ export const interfaceText = {
     "Loading…": "Carregando…"
   },
   "fa": {
+    "Failed to sign in with Google": "???? ?? ???? ???? ???",
+    "Private & Secure ? Self-hosted data storage": "????? ? ??? ? ????? ??????? ?? ???? ????",
+    "Refreshing?": "?? ??? ??????????",
+    "Release to refresh": "???? ????????? ??? ????",
+    "Pull to refresh": "???? ????????? ????? ?????",
     "Cloud backup coverage": "???? ??????? ????",
     "Stored in cloud: {size} MB ? {records} record days ? {files} files": "????? ?? ???: {size} ??????? ? {records} ??? ????? ? {files} ????",
     "Saved record dates: {from} to {to}": "????? ????? ?????????: {from} ?? {to}",
