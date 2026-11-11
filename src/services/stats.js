@@ -1,4 +1,3 @@
-
 // Time string (HH:MM) to Minutes
 export const T2M = (t) => {
     if (!t || !t.includes(':')) return 0;
@@ -14,36 +13,127 @@ export const M2T = (m) => {
     return `${m < 0 ? '-' : ''}${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
 };
 
+// Formats minutes into human-readable duration (e.g. 4h 54min or 35min)
+export const formatDurationHM = (m) => {
+    if (!m || m <= 0) return '0min';
+    const a = Math.abs(m);
+    const h = Math.floor(a / 60);
+    const min = a % 60;
+    if (h > 0) {
+        return min > 0 ? `${h}h ${min}min` : `${h}h`;
+    }
+    return `${min}min`;
+};
+
 /**
- * Calculates daily statistics
- * @param {Array} entries - List of entry objects {time, type}
- * @param {Array} targetSessions - List of session durations in minutes (e.g. [240, 240])
- * @param {number} tolerance - Tolerance in minutes (fixed 10 if on, 0 if off, passed as value)
- * @param {boolean} isToday - Whether the date is today (affects live session)
- * @returns {Object} { worked: number, balance: number, prediction: number|null, isOpen: boolean, totalTarget: number }
+ * Groups entries into sessions (Turnos) and breaks (Intervalos)
+ * @param {Array} entries
+ * @returns {Array} List of grouped sessions and intervals
  */
-export const calculateDailyStats = (entries = [], targetSessions = [], tolerance = 0, isToday = false) => {
+export const groupEntriesIntoSessions = (entries = []) => {
+    const sorted = [...entries].sort((a, b) => T2M(a.time) - T2M(b.time));
+    const items = [];
+    
+    let currentSession = null;
+    let sessionNumber = 1;
+    let lastExitTime = null;
+
+    sorted.forEach((e) => {
+        const isEntry = Boolean(e.type.match(/entrada|in|entrance|ورود/i));
+        const isExit = Boolean(e.type.match(/saída|saida|out|exit|خروج/i));
+
+        if (isEntry) {
+            // Check if there was a previous session's exit to form an interval
+            if (lastExitTime !== null) {
+                let intervalM = T2M(e.time) - T2M(lastExitTime);
+                if (intervalM < 0) intervalM += 1440;
+                items.push({
+                    type: 'interval',
+                    id: `interval_${sessionNumber}_${e.id}`,
+                    from: lastExitTime,
+                    to: e.time,
+                    durationMinutes: intervalM
+                });
+            }
+
+            currentSession = {
+                type: 'session',
+                sessionNumber: sessionNumber++,
+                inEntry: e,
+                outEntry: null,
+                durationMinutes: null
+            };
+            items.push(currentSession);
+        } else if (isExit) {
+            if (currentSession && !currentSession.outEntry) {
+                currentSession.outEntry = e;
+                let diff = T2M(e.time) - T2M(currentSession.inEntry?.time || '00:00');
+                if (diff < 0) diff += 1440;
+                currentSession.durationMinutes = diff;
+                lastExitTime = e.time;
+            } else {
+                // Exit without an open entry
+                currentSession = {
+                    type: 'session',
+                    sessionNumber: sessionNumber++,
+                    inEntry: null,
+                    outEntry: e,
+                    durationMinutes: null
+                };
+                items.push(currentSession);
+                lastExitTime = e.time;
+            }
+        }
+    });
+
+    return items;
+};
+
+/**
+ * Calculates daily statistics and exit time suggestion
+ * @param {Array} entries - List of entry objects {time, type}
+ * @param {Array} targetSessions - List of session durations or range objects [{start, end}]
+ * @param {number} tolerance - Tolerance in minutes (e.g. 10 or 0)
+ * @param {boolean} isToday - Whether the date is today
+ * @param {string} toleranceMode - 'entry' | 'exit'
+ * @returns {Object} { worked, balance, prediction, isOpen, totalTarget, plannedShiftsCount, completedSessions }
+ */
+export const calculateDailyStats = (
+    entries = [],
+    targetSessions = [],
+    tolerance = 0,
+    isToday = false,
+    toleranceMode = 'exit'
+) => {
+    // 1. Separate the planned schedule from actual punches
+    const targets = Array.isArray(targetSessions) ? targetSessions : [targetSessions || 0];
+
+    const plannedShifts = targets.map((sess) => {
+        if (typeof sess === 'number') {
+            return { duration: sess, start: null, end: null };
+        }
+        if (sess && sess.start && sess.end) {
+            return {
+                duration: Math.max(0, T2M(sess.end) - T2M(sess.start)),
+                start: sess.start,
+                end: sess.end
+            };
+        }
+        return { duration: 0, start: null, end: null };
+    }).filter(s => s.duration > 0);
+
+    // 2. Calculate the day's planned total by summing the duration of all planned shifts
+    const totalTarget = plannedShifts.reduce((acc, s) => acc + s.duration, 0);
+
+    // 3. Process actual punches and calculate worked-so-far total
+    const sorted = [...entries].sort((a, b) => T2M(a.time) - T2M(b.time));
+
     let worked = 0;
     let lastIn = null;
     let isOpen = false;
     let completedSessions = 0;
 
-    // Ensure targetSessions is an array
-    const targets = Array.isArray(targetSessions) ? targetSessions : [targetSessions || 0];
-
-    // Calculate total target from durations or time ranges
-    const totalTarget = targets.reduce((acc, sess) => {
-        if (typeof sess === 'number') return acc + sess;
-        if (sess && sess.start && sess.end) {
-            return acc + Math.max(0, T2M(sess.end) - T2M(sess.start));
-        }
-        return acc;
-    }, 0);
-
-    // Sort by time
-    const sorted = [...entries].sort((a, b) => T2M(a.time) - T2M(b.time));
-
-    sorted.forEach(e => {
+    sorted.forEach((e) => {
         const m = T2M(e.time);
         if (e.type.match(/entrada|in|entrance/i)) {
             lastIn = m;
@@ -51,15 +141,22 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
         } else if (e.type.match(/saída|saida|out|exit/i) && isOpen) {
             let exitM = m;
             if (exitM < lastIn) {
-                exitM += 1440; // Add 24 hours if crossed midnight
+                exitM += 1440; // Crossed midnight
             }
-            worked += (exitM - lastIn);
+            
+            // Apply tolerance credit to completed shifts if enabled
+            let sessionDuration = exitM - lastIn;
+            if (tolerance > 0) {
+                sessionDuration += tolerance;
+            }
+
+            worked += sessionDuration;
             isOpen = false;
             completedSessions++;
         }
     });
 
-    // If currently open, add time until NOW *only if checking today*
+    // If currently open and today, add active session time
     let currentSessionWorked = 0;
     if (isOpen && isToday) {
         const now = new Date();
@@ -68,38 +165,29 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
     }
 
     const totalWorked = worked + currentSessionWorked;
-    const effectiveTarget = Math.max(0, totalTarget - tolerance);
-    const balance = totalWorked - effectiveTarget;
+    const balance = totalWorked - totalTarget;
 
-    // Prediction: Global Debt / Floating Shift
-    // Formula: Prediction = LastIn + (TotalTarget - WorkedSoFar - FutureShiftsDuration)
+    // 4. Calculate exit suggestion
     let prediction = null;
-    if (isOpen) {
-        let currentRemaining = Math.max(0, totalTarget - worked);
 
-        // Find shifts that have start/end times
-        const timeRanges = targets
-            .filter(t => typeof t === 'object' && t.start && t.end)
-            .sort((a, b) => T2M(a.start) - T2M(b.start));
+    if (isOpen && lastIn !== null) {
+        const remainingDayTime = Math.max(0, totalTarget - worked);
 
-        if (timeRanges.length > 0 && currentRemaining > 0) {
-            // Find shifts that start significantly AFTER the current LastIn
-            // If a shift starts within 120 mins (2 hours) of LastIn, we consider it the "current" shift we are starting early for.
-            const futureShifts = timeRanges.filter(s => T2M(s.start) > (lastIn + 120));
+        // Determine if current shift is the last planned shift of the day
+        const isLastShift = plannedShifts.length <= 1 || completedSessions >= (plannedShifts.length - 1);
 
-            // Calculate duration of these future shifts
-            const futureShiftsDuration = futureShifts.reduce((acc, s) => {
-                return acc + Math.max(0, T2M(s.end) - T2M(s.start));
-            }, 0);
-
-            // WorkNeededNow = TotalTarget - WorkedSoFar - FutureShiftsDuration
-            let workNeededNow = Math.max(0, totalTarget - worked - futureShiftsDuration);
-
-            prediction = lastIn + workNeededNow;
-
-        } else if (currentRemaining > 0) {
-            // Fallback for duration-only targets (no specific start/end times)
-            prediction = lastIn + currentRemaining;
+        if (isLastShift) {
+            // 5. If the current shift is the last one of the day:
+            // suggested exit = current real entry + remaining - tolerance
+            const effectiveRemaining = Math.max(0, remainingDayTime - tolerance);
+            prediction = lastIn + effectiveRemaining;
+        } else {
+            // 6. If there is still another planned shift on the same day:
+            // Use the planned duration of that specific shift - tolerance
+            const currentPlannedShift = plannedShifts[completedSessions];
+            const shiftDuration = currentPlannedShift ? currentPlannedShift.duration : (plannedShifts[0]?.duration || 0);
+            const effectiveShiftDuration = Math.max(0, shiftDuration - tolerance);
+            prediction = lastIn + effectiveShiftDuration;
         }
     }
 
@@ -108,6 +196,8 @@ export const calculateDailyStats = (entries = [], targetSessions = [], tolerance
         balance,
         prediction, // in minutes
         isOpen,
-        totalTarget
+        totalTarget,
+        completedSessions,
+        plannedShiftsCount: plannedShifts.length
     };
 };

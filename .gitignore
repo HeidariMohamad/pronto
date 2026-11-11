@@ -30,3 +30,17 @@ dist-ssr/
 vite.config.*
 tsconfig.*
 *.map
+
+# Server local data, database, environment, and user uploads
+.env
+.env.*
+server/node_modules/
+server/.env
+server/uploads/
+server/*.db
+server/*.db-wal
+server/*.db-shm
+*.sqlite
+*.db
+uploads/
+

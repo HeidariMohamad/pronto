@@ -1,6 +1,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, getTodayISO } from "../services/db";
 import { calculateDailyStats } from "../services/stats";
+import { queueSync } from "../services/sync";
 
 export function useDailyRecord(dateStr = getTodayISO()) {
     const record = useLiveQuery(
@@ -22,13 +23,15 @@ export function useDailyRecord(dateStr = getTodayISO()) {
 
     const activeTargets = semester ? semester.targets : (settings?.targets || []);
     const tolerance = settings?.tolerance ? 10 : 0;
+    const toleranceMode = settings?.toleranceMode || 'exit';
     const isToday = dateStr === getTodayISO();
 
     const stats = calculateDailyStats(
         record?.entries || [],
         activeTargets[dayOfWeek] || [],
         tolerance,
-        isToday
+        isToday,
+        toleranceMode
     );
 
     const addEntry = async (time, type, photo = null) => {
@@ -43,6 +46,7 @@ export function useDailyRecord(dateStr = getTodayISO()) {
                 await db.records.add({ date: dateStr, entries: [{ id, time, type, photo }], note: '' });
             }
         });
+        queueSync('records', dateStr);
     };
 
     const updateEntry = async (id, field, value) => {
@@ -52,6 +56,7 @@ export function useDailyRecord(dateStr = getTodayISO()) {
             const newEntries = (current.entries || []).map(e => e.id === id ? { ...e, [field]: value } : e);
             await db.records.update(dateStr, { entries: newEntries });
         });
+        queueSync('records', dateStr);
     };
 
     const deleteEntry = async (id) => {
@@ -61,6 +66,7 @@ export function useDailyRecord(dateStr = getTodayISO()) {
             const newEntries = (current.entries || []).filter(e => e.id !== id);
             await db.records.update(dateStr, { entries: newEntries });
         });
+        queueSync('records', dateStr);
     };
 
     const updateNote = async (note) => {
@@ -72,6 +78,7 @@ export function useDailyRecord(dateStr = getTodayISO()) {
                 await db.records.add({ date: dateStr, entries: [], note });
             }
         });
+        queueSync('records', dateStr);
     };
 
     return {

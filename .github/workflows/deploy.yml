@@ -15,16 +15,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build project
-        run: npm run build
+      - name: Build frontend
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+        run: |
+          test -n "$VITE_GOOGLE_CLIENT_ID" || { echo "Missing VITE_GOOGLE_CLIENT_ID repository variable"; exit 1; }
+          npm run build
 
-      - name: Deploy to Server
+      - name: Deploy Frontend to Server
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.HOST }}
@@ -34,3 +38,33 @@ jobs:
           source: "dist/*"
           target: "/var/www/pronto"
           strip_components: 1
+
+      - name: Deploy Backend to Server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          source: "server/server.js,server/db.js,server/package.json,server/package-lock.json,server/routes/*"
+          target: "/var/www/pronto-server"
+          strip_components: 1
+
+      - name: Install Backend & Restart Service
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd /var/www/pronto-server
+            npm ci --omit=dev
+            mkdir -p uploads
+            if pm2 describe pronto-server > /dev/null 2>&1; then
+              pm2 reload pronto-server --update-env
+            else
+              pm2 start server.js --name pronto-server
+            fi
+            curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 2 http://127.0.0.1:3000/api/health

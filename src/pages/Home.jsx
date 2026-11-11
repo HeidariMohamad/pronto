@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
 import { useDailyRecord } from '../hooks/useDailyRecord';
-import { M2T, T2M } from '../services/stats';
-import { Card, Fab, Modal } from '../components/UI';
-import { ChevronLeft, ChevronRight, Fingerprint, Camera, Trash2, Edit2 } from 'lucide-react';
+import { M2T, formatDurationHM, groupEntriesIntoSessions } from '../services/stats';
+import { 
+    ChevronLeft, 
+    ChevronRight, 
+    Fingerprint, 
+    Camera, 
+    Trash2, 
+    ChevronDown, 
+    ChevronUp,
+    Sparkles,
+    X
+} from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { toLocalISOString } from '../services/db';
+import { optimizeImage } from '../services/imageOptimizer';
+import { api } from '../services/api';
+import { IosTimePickerModal } from '../components/IosTimePickerModal';
 
 export const HomePage = () => {
     const [activeDate, setActiveDate] = useState(new Date());
@@ -12,6 +24,8 @@ export const HomePage = () => {
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [entryToDelete, setEntryToDelete] = useState(null);
     const [selectedImage, setSelectedImage] = useState(null);
+    const [editingTimePicker, setEditingTimePicker] = useState(null);
+    const [collapsedTurns, setCollapsedTurns] = useState({});
     const { t, lang } = useTranslation();
 
     const changeDate = (days) => {
@@ -24,34 +38,29 @@ export const HomePage = () => {
         const n = new Date();
         const time = `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
         const count = record.entries?.length || 0;
-        const typeBase = lang === 'pt' ? (count % 2 === 0 ? 'Entrada' : 'Saída') : (count % 2 === 0 ? 'In' : 'Out');
+        const typeBase = lang === 'pt' ? (count % 2 === 0 ? 'Entrada' : 'Saída') 
+                       : lang === 'fa' ? (count % 2 === 0 ? 'ورود' : 'خروج')
+                       : (count % 2 === 0 ? 'In' : 'Out');
         const type = `${typeBase} ${Math.floor(count / 2) + 1}`;
         addEntry(time, type);
     };
 
-    const handlePhoto = (e, entryId) => {
+    const handlePhoto = async (e, entryId) => {
         const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                const img = new Image();
-                img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX = 1000;
-                    let w = img.width;
-                    let h = img.height;
-                    if (w > h) { if (w > MAX) { h *= MAX / w; w = MAX; } }
-                    else { if (h > MAX) { w *= MAX / h; h = MAX; } }
-                    canvas.width = w;
-                    canvas.height = h;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, w, h);
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-                    updateEntry(entryId, 'photo', dataUrl);
-                };
-                img.src = ev.target.result;
-            };
-            reader.readAsDataURL(file);
+        if (!file) return;
+
+        try {
+            const { blob, dataUrl } = await optimizeImage(file, 800, 0.65);
+            await updateEntry(entryId, 'photo', dataUrl);
+
+            if (navigator.onLine && localStorage.getItem('pronto_token')) {
+                const uploadRes = await api.uploadPhoto(blob, file.name);
+                if (uploadRes?.url) {
+                    await updateEntry(entryId, 'photo', uploadRes.url);
+                }
+            }
+        } catch (err) {
+            console.error('Failed to process and upload photo:', err);
         }
     };
 
@@ -66,6 +75,13 @@ export const HomePage = () => {
         setEntryToDelete(null);
     };
 
+    const toggleTurnCollapse = (turnNumber) => {
+        setCollapsedTurns(prev => ({
+            ...prev,
+            [turnNumber]: !prev[turnNumber]
+        }));
+    };
+
     const WEEKDAYS = t('weekday_labels');
 
     const handleDateChange = (e) => {
@@ -74,19 +90,32 @@ export const HomePage = () => {
         }
     };
 
-    // Calculate next action type
     const count = record.entries?.length || 0;
     const nextAction = count % 2 === 0 ? 'entry' : 'exit';
+    const isPositiveBalance = stats.balance >= 0;
+
+    // Group entries into sessions & intervals
+    const timelineItems = groupEntriesIntoSessions(record.entries || []);
 
     return (
-        <div className="space-y-4 pb-32">
-            {/* Date Nav */}
-            <div className="flex items-center justify-between px-2">
-                <button onClick={() => changeDate(-1)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10"><ChevronLeft size={24} /></button>
-                <div className={`text-center relative ${stats.balance >= 0 ? 'text-green-500' : ''}`}>
-                    <p className={`text-[10px] font-bold uppercase tracking-widest ${stats.balance >= 0 ? 'text-green-500' : 'text-[var(--primary)]'}`}>{WEEKDAYS[activeDate.getDay()]}</p>
-                    <label className="text-lg font-normal cursor-pointer flex items-center justify-center gap-2">
-                        {activeDate.toLocaleDateString(lang === 'pt' ? 'pt-BR' : 'en-US', { day: 'numeric', month: 'long' })}
+        <div className="space-y-4 pb-28 animate-fade-in">
+
+            {/* Date Switcher */}
+            <div className="home-date-switcher text-center space-y-0.5 pt-1">
+                <p className="text-[11px] font-bold uppercase tracking-widest text-emerald-400">
+                    {WEEKDAYS[activeDate.getDay()]}
+                </p>
+
+                <div className="flex items-center justify-center gap-3">
+                    <button
+                        onClick={() => changeDate(-1)}
+                        className="p-1 text-slate-400 hover:text-white active:scale-90 transition-transform"
+                    >
+                        <ChevronLeft size={22} />
+                    </button>
+
+                    <label className="text-lg font-medium cursor-pointer relative text-slate-100 hover:text-white transition-colors">
+                        {activeDate.toLocaleDateString(lang === 'pt' ? 'pt-BR' : lang === 'fa' ? 'fa-IR' : 'en-US', { day: 'numeric', month: 'long' })}
                         <input
                             type="date"
                             className="absolute opacity-0 inset-0 w-full h-full cursor-pointer"
@@ -94,123 +123,322 @@ export const HomePage = () => {
                             value={toLocalISOString(activeDate)}
                         />
                     </label>
+
+                    <button
+                        onClick={() => changeDate(1)}
+                        className="p-1 text-slate-400 hover:text-white active:scale-90 transition-transform"
+                    >
+                        <ChevronRight size={22} />
+                    </button>
                 </div>
-                <button onClick={() => changeDate(1)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10"><ChevronRight size={24} /></button>
             </div>
 
-            {/* Prediction */}
+            {/* Top 3 Stat Cards */}
+            <div className="grid grid-cols-3 gap-2.5">
+                <div className="theme-stat-pill p-3 text-center flex flex-col items-center justify-center">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        {t('worked')}
+                    </p>
+                    <p className="text-xl font-bold tracking-tight text-white">
+                        {M2T(stats.worked)}
+                    </p>
+                </div>
+
+                <div className={`theme-stat-pill p-3 text-center flex flex-col items-center justify-center border ${
+                    isPositiveBalance 
+                        ? 'border-emerald-500/30 text-emerald-400' 
+                        : 'border-red-500/30 text-red-400'
+                }`}>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        {t('balance')}
+                    </p>
+                    <p className="text-xl font-bold tracking-tight">
+                        {isPositiveBalance && stats.balance > 0 ? `+${M2T(stats.balance)}` : M2T(stats.balance)}
+                    </p>
+                </div>
+
+                <div className="theme-stat-pill p-3 text-center flex flex-col items-center justify-center">
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                        {t('journey')}
+                    </p>
+                    <p className="text-xl font-bold tracking-tight text-white">
+                        {M2T(stats.totalTarget || 0)}
+                    </p>
+                </div>
+            </div>
+
+            {/* Predicted Exit Time Card */}
             {stats.prediction && (
-                <div className="m3-card p-6 bg-[var(--primary)] text-white relative overflow-hidden shadow-lg rounded-[28px]">
-                    <div className="relative z-10">
-                        <p className="text-[10px] font-bold uppercase opacity-70 tracking-tighter">{t('prediction')}</p>
-                        <h2 className="text-6xl font-light tracking-tighter">{M2T(stats.prediction)}</h2>
+                <div className="theme-card p-4 relative overflow-hidden bg-gradient-to-r from-blue-600/30 via-indigo-600/20 to-purple-600/20 border-blue-400/30 shadow-lg shadow-blue-500/10">
+                    <div className="flex justify-between items-center relative z-10">
+                        <div>
+                            <div className="flex items-center gap-1.5 text-blue-300 text-xs font-semibold uppercase tracking-wider mb-0.5">
+                                <Sparkles size={13} />
+                                {t('prediction')}
+                            </div>
+                            <h2 className="text-4xl font-light tracking-tight text-white">
+                                {M2T(stats.prediction)}
+                            </h2>
+                        </div>
+                        <Fingerprint className="w-16 h-16 text-blue-400/15" />
                     </div>
-                    <Fingerprint className="absolute -right-4 -top-4 w-24 h-24 opacity-10" />
                 </div>
             )}
 
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-3">
-                <Card className="p-3 text-center flex flex-col items-center justify-center">
-                    <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('worked')}</p>
-                    <p className="text-xl font-medium">{M2T(stats.worked)}</p>
-                </Card>
-                <Card className={`p-3 border text-center flex flex-col items-center justify-center ${stats.balance >= 0 ? 'border-green-500/30' : 'border-red-500/30'}`}>
-                    <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('balance')}</p>
-                    <p className="text-xl font-medium">{M2T(stats.balance)}</p>
-                </Card>
-                <Card className="p-3 bg-white/5 border border-white/5 text-center flex flex-col items-center justify-center">
-                    <p className="text-[10px] font-bold opacity-50 uppercase mb-1">{t('journey')}</p>
-                    <p className="text-xl font-medium">{M2T(stats.totalTarget || 0)}</p>
-                </Card>
+            {/* Hero Stamp Action Button */}
+            <div className="flex justify-center py-2">
+                <button
+                    onClick={handleQuickStamp}
+                    className="theme-action-btn w-full max-w-[280px] py-3.5 px-6 flex items-center justify-center gap-3 text-base shadow-xl"
+                >
+                    <Fingerprint className="w-6 h-6 text-white" />
+                    <span>{t(nextAction)}</span>
+                </button>
             </div>
 
-            {/* FAB */}
-            <div className="flex justify-center py-4">
-                <Fab onClick={handleQuickStamp} className="px-8 py-4 h-auto rounded-2xl">
-                    <Fingerprint className="w-6 h-6 mr-2" />
-                    <span className="text-lg font-medium tracking-wide w-[100px] inline-block text-center">{t(nextAction)}</span>
-                </Fab>
-            </div>
+            {/* Timeline: Grouped Sessions (Turnos) & Breaks (Intervalos) */}
+            <div className="space-y-3">
+                {timelineItems.map((item) => {
+                    if (item.type === 'interval') {
+                        return (
+                            <div
+                                key={item.id}
+                                className="theme-interval-card p-3 flex items-center justify-between text-xs text-slate-300"
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <div>
+                                        <span className="font-semibold text-slate-400 uppercase tracking-wider text-[10px] block">
+                                            {t('interval')}
+                                        </span>
+                                        <span className="text-slate-200 font-medium">
+                                            {item.from} → {item.to}
+                                        </span>
+                                    </div>
+                                </div>
 
-            {/* Timeline */}
-            <div className="space-y-1.5">
-                {(record.entries || []).map(entry => (
-                    <Card key={entry.id} className="p-2 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                            {entry.photo ? (
-                                <img
-                                    src={entry.photo}
-                                    className="w-8 h-8 rounded-lg object-cover cursor-pointer"
-                                    onClick={() => setSelectedImage(entry.photo)}
-                                />
-                            ) : (
-                                <label className="w-8 h-8 rounded-lg bg-black/5 dark:bg-white/10 flex items-center justify-center text-slate-400 border-2 border-dashed border-black/10 dark:border-white/20 cursor-pointer overflow-hidden relative">
-                                    <Camera size={14} />
-                                    <input type="file" accept="image/*" className="hidden" capture="environment" onChange={(e) => handlePhoto(e, entry.id)} />
-                                </label>
-                            )}
-                            <div>
-                                <input
-                                    type="time"
-                                    value={entry.time}
-                                    onChange={(e) => updateEntry(entry.id, 'time', e.target.value)}
-                                    className="text-base font-bold bg-transparent border-none p-0 focus:ring-0 outline-none w-24"
-                                />
-                                <p className="text-[8px] font-bold opacity-40 uppercase tracking-widest leading-tight">{entry.type}</p>
+                                <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full font-semibold text-slate-300 text-xs">
+                                    {formatDurationHM(item.durationMinutes)}
+                                </span>
                             </div>
+                        );
+                    }
+
+                    const isCollapsed = collapsedTurns[item.sessionNumber];
+
+                    return (
+                        <div key={item.sessionNumber} className="theme-card overflow-hidden">
+                            {/* Session Header */}
+                            <div
+                                onClick={() => toggleTurnCollapse(item.sessionNumber)}
+                                className="p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-white/5 transition-colors"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                                        {t('shift')} {item.sessionNumber}
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {item.durationMinutes !== null && (
+                                        <span className="px-3 py-1 bg-blue-500/15 border border-blue-400/20 text-blue-300 rounded-full text-xs font-semibold">
+                                            {formatDurationHM(item.durationMinutes)}
+                                        </span>
+                                    )}
+                                    {item.durationMinutes === null && (
+                                        <span className="px-2.5 py-0.5 bg-amber-500/15 border border-amber-400/20 text-amber-300 rounded-full text-[11px] font-medium animate-pulse">
+                                            {t('in_progress')}
+                                        </span>
+                                    )}
+                                    <button className="text-slate-400">
+                                        {isCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Session Punches */}
+                            {!isCollapsed && (
+                                <div className="px-3 pb-3 pt-1 space-y-2 border-t border-white/5">
+                                    {/* Entry Punch */}
+                                    {item.inEntry && (
+                                        <div className="flex items-center justify-between py-1.5 px-1">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTimePicker({ id: item.inEntry.id, time: item.inEntry.time, label: item.inEntry.type || t('entry') })}
+                                                    className="text-base font-semibold text-white tracking-tight px-2 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 active:scale-95 transition-all cursor-pointer select-none"
+                                                    title={t('select_time')}
+                                                >
+                                                    {item.inEntry.time}
+                                                </button>
+                                                <span className="text-xs text-slate-400">
+                                                    · {item.inEntry.type || t('entry')}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {item.inEntry.photo ? (
+                                                    <img
+                                                        src={item.inEntry.photo}
+                                                        alt="Punch"
+                                                        className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20"
+                                                        onClick={() => setSelectedImage(item.inEntry.photo)}
+                                                    />
+                                                ) : (
+                                                    <label className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 border border-white/10 cursor-pointer transition-colors">
+                                                        <Camera size={13} />
+                                                        <input 
+                                                            type="file" 
+                                                            accept="image/*" 
+                                                            capture="environment" 
+                                                            className="hidden" 
+                                                            onChange={(e) => handlePhoto(e, item.inEntry.id)} 
+                                                        />
+                                                    </label>
+                                                )}
+
+                                                <button
+                                                    onClick={() => confirmDelete(item.inEntry.id)}
+                                                    className="p-1 text-red-400/60 hover:text-red-400 transition-colors"
+                                                    title="Delete punch"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Exit Punch */}
+                                    {item.outEntry && (
+                                        <div className="flex items-center justify-between py-1.5 px-1 border-t border-white/5 pt-2">
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingTimePicker({ id: item.outEntry.id, time: item.outEntry.time, label: item.outEntry.type || t('exit') })}
+                                                    className="text-base font-semibold text-white tracking-tight px-2 py-1 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 active:scale-95 transition-all cursor-pointer select-none"
+                                                    title={t('select_time')}
+                                                >
+                                                    {item.outEntry.time}
+                                                </button>
+                                                <span className="text-xs text-slate-400">
+                                                    · {item.outEntry.type || t('exit')}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-2">
+                                                {item.outEntry.photo ? (
+                                                    <img
+                                                        src={item.outEntry.photo}
+                                                        alt="Punch"
+                                                        className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20"
+                                                        onClick={() => setSelectedImage(item.outEntry.photo)}
+                                                    />
+                                                ) : (
+                                                    <label className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 border border-white/10 cursor-pointer transition-colors">
+                                                        <Camera size={13} />
+                                                        <input 
+                                                            type="file" 
+                                                            accept="image/*" 
+                                                            capture="environment" 
+                                                            className="hidden" 
+                                                            onChange={(e) => handlePhoto(e, item.outEntry.id)} 
+                                                        />
+                                                    </label>
+                                                )}
+
+                                                <button
+                                                    onClick={() => confirmDelete(item.outEntry.id)}
+                                                    className="p-1 text-red-400/60 hover:text-red-400 transition-colors"
+                                                    title="Delete punch"
+                                                >
+                                                    <Trash2 size={15} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                        <button onClick={() => confirmDelete(entry.id)} className="p-1.5 text-red-500 opacity-60 hover:opacity-100"><Trash2 size={16} /></button>
-                    </Card>
-                ))}
-                {record.entries?.length === 0 && <p className="text-center opacity-30 text-sm py-4">{t('no_records_today')}</p>}
-                {stats.isOpen && !toLocalISOString(activeDate).includes(toLocalISOString(new Date())) && (
-                    <p className="text-center text-yellow-500 text-xs font-bold py-2 bg-yellow-500/10 rounded-xl border border-yellow-500/20">
-                        ⚠ {t('close_entry_warning') || 'Complete the entry to see stats'}
-                    </p>
+                    );
+                })}
+
+                {record.entries?.length === 0 && (
+                    <div className="text-center py-8 text-slate-500 text-sm theme-card">
+                        {t('no_records_today')}
+                    </div>
                 )}
             </div>
 
-            {/* Note */}
-            <Card className="p-4">
+            {/* Daily Note Card */}
+            <div className="theme-card p-3.5">
                 <textarea
-                    value={record.note}
+                    value={record.note || ''}
                     onChange={(e) => updateNote(e.target.value)}
-                    className="w-full bg-transparent border-none focus:ring-0 text-sm italic outline-none resize-none"
+                    className="w-full bg-transparent border-none focus:ring-0 text-sm text-slate-300 outline-none resize-none placeholder:text-slate-500"
                     placeholder={t('note_placeholder')}
                     rows={2}
-                ></textarea>
-            </Card>
+                />
+            </div>
 
-            {/* Modal */}
-            <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)}>
-                <h3 className="text-xl font-medium">{t('delete_modal_title')}</h3>
-                <p className="opacity-70">{t('delete_modal_desc')}</p>
-                <div className="flex justify-end gap-4 mt-6">
-                    <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 font-medium opacity-50">{t('cancel')}</button>
-                    <button onClick={executeDelete} className="px-6 py-2 bg-red-500 text-white rounded-full font-medium">{t('delete')}</button>
-                </div>
-            </Modal>
-
-            {/* Image Viewer Overlay */}
-            {selectedImage && (
-                <div
-                    className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm"
-                    onClick={() => setSelectedImage(null)}
-                >
-                    <img
-                        src={selectedImage}
-                        className="max-w-full max-h-full rounded-2xl shadow-2xl"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                    <button
-                        onClick={() => setSelectedImage(null)}
-                        className="absolute top-4 right-4 bg-white/10 p-2 rounded-full text-white backdrop-blur-md"
-                    >
-                        ✕
-                    </button>
+            {/* Delete Confirmation Modal */}
+            {isDeleteModalOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+                    <div className="theme-card p-5 w-full max-w-xs space-y-4 shadow-2xl">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-base font-semibold text-white">{t('delete_modal_title')}</h3>
+                            <button onClick={() => setIsDeleteModalOpen(false)} className="text-slate-400 hover:text-white">
+                                <X size={18} />
+                            </button>
+                        </div>
+                        <p className="text-xs text-slate-300">{t('delete_modal_desc')}</p>
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                onClick={() => setIsDeleteModalOpen(false)}
+                                className="flex-1 py-2 rounded-xl text-xs bg-white/10 text-slate-300 hover:bg-white/15"
+                            >
+                                {t('cancel')}
+                            </button>
+                            <button
+                                onClick={executeDelete}
+                                className="flex-1 py-2 rounded-xl text-xs bg-red-500 hover:bg-red-600 text-white font-semibold"
+                            >
+                                {t('delete')}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
+
+            {/* Photo Zoom Modal */}
+            {selectedImage && (
+                <div 
+                    onClick={() => setSelectedImage(null)}
+                    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg cursor-pointer"
+                >
+                    <div className="relative max-w-sm max-h-[80vh] overflow-hidden rounded-3xl border border-white/20 shadow-2xl">
+                        <img src={selectedImage} alt="Expanded punch" className="w-full h-auto object-contain max-h-[75vh]" />
+                        <button
+                            onClick={() => setSelectedImage(null)}
+                            className="absolute top-3 right-3 p-2 bg-black/60 rounded-full text-white"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* iOS Action-Sheet Style Time Picker Modal */}
+            <IosTimePickerModal
+                isOpen={!!editingTimePicker}
+                initialTime={editingTimePicker?.time || '08:00'}
+                title={editingTimePicker?.label ? `${t('select_time')} · ${editingTimePicker.label}` : undefined}
+                onConfirm={(newTime) => {
+                    if (editingTimePicker?.id) {
+                        updateEntry(editingTimePicker.id, 'time', newTime);
+                    }
+                }}
+                onClose={() => setEditingTimePicker(null)}
+            />
+
         </div>
     );
 };

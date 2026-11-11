@@ -1,33 +1,84 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Fingerprint, Sliders } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
+import { subscribeSyncStatus } from '../services/sync';
 
 export const Layout = ({ children }) => {
     const { t } = useTranslation();
+    const [syncStatus, setSyncStatus] = useState('idle');
+    const mainRef = useRef(null);
+    const location = useLocation();
+
+    useEffect(() => {
+        return subscribeSyncStatus(setSyncStatus);
+    }, []);
+
+    // Smoothly scroll to top on tab switch
+    useEffect(() => {
+        if (mainRef.current) {
+            mainRef.current.scrollTop = 0;
+        }
+    }, [location.pathname]);
+
+    const getStatusIndicator = () => {
+        switch (syncStatus) {
+            case 'syncing':
+                return {
+                    className: 'w-2 h-2 rounded-full bg-amber-400 animate-pulse shadow-[0_0_10px_rgba(251,191,36,0.9)]',
+                    title: 'Syncing changes to cloud...'
+                };
+            case 'offline':
+                return {
+                    className: 'w-2 h-2 rounded-full bg-slate-500',
+                    title: 'Offline mode (changes saved locally)'
+                };
+            case 'error':
+                return {
+                    className: 'w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)]',
+                    title: 'Sync failed (will retry automatically)'
+                };
+            case 'idle':
+            default:
+                return {
+                    className: 'w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]',
+                    title: 'Connected & synced'
+                };
+        }
+    };
+
+    const statusInfo = getStatusIndicator();
 
     return (
-        <div className="min-h-[100dvh] flex flex-col bg-[var(--surface)] text-[var(--on-container)] transition-colors duration-200">
+        <div className="min-h-[100dvh] flex flex-col relative text-[var(--on-container)] transition-colors duration-200">
 
-            {/* Safe Area Top */}
-            <div className="safe-top fixed top-0 left-0 right-0 z-50 bg-[#0d1520]/85 backdrop-blur-xl rounded-b-3xl border-b border-white/5 shadow-lg transition-all duration-300">
-                <div className="px-6 py-4 flex justify-between items-center max-w-lg mx-auto">
-                    <div className="flex items-center gap-3">
-                        <Fingerprint className="w-6 h-6 text-[var(--primary)]" />
-                        <h1 className="text-xl font-normal tracking-tight">{t('app_name')}</h1>
+            {/* Safe Area Top Header */}
+            <header className="safe-top fixed top-0 left-0 right-0 z-40 pointer-events-none flex justify-center">
+                <div className="theme-header flex justify-between items-center transition-all duration-300 pointer-events-auto">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-[var(--primary)]/15 border border-[var(--primary)]/30 flex items-center justify-center text-[var(--primary)] shadow-sm">
+                            <Fingerprint size={19} />
+                        </div>
+                        <h1 className="text-lg font-semibold tracking-tight text-white">{t('app_name')}</h1>
                     </div>
-                    <div id="sync-status" className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+
+                    <div
+                        id="sync-status"
+                        title={statusInfo.title}
+                        className={statusInfo.className}
+                    />
                 </div>
-            </div>
+            </header>
 
             {/* Main Content */}
-            <main className="flex-1 p-4 pt-24 max-w-lg mx-auto w-full space-y-4 pb-32 overflow-y-auto no-scrollbar">
+            <main ref={mainRef} className="flex-1 p-4 pt-20 max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
                 {children}
             </main>
 
-            {/* Bottom Nav */}
-            <nav className="fixed bottom-0 left-0 right-0 bg-[var(--surface)]/90 backdrop-blur-xl border-t border-black/5 safe-bottom z-50 transition-colors duration-200">
-                <div className="max-w-lg mx-auto flex justify-around p-2">
+            {/* Theme-Aware Bottom Navigation */}
+            <nav className="theme-nav-container z-50 safe-bottom">
+                <div className={`theme-nav-bar flex justify-around items-center transition-all duration-300 ${location.pathname === '/settings' ? 'nav-on-settings' : 'nav-on-home'}`}>
+                    <span className="theme-nav-liquid" aria-hidden="true" />
                     <NavItem to="/" icon={<Fingerprint size={20} />} label={t('nav_home')} />
                     <NavItem to="/settings" icon={<Sliders size={20} />} label={t('settings_title')} />
                 </div>
@@ -38,14 +89,17 @@ export const Layout = ({ children }) => {
 
 const NavItem = ({ to, icon, label }) => {
     return (
-        <NavLink to={to} className={({ isActive }) =>
-            `flex flex-col items-center gap-1 px-10 py-2 rounded-full transition-all duration-300 ${isActive
-                ? "bg-[var(--primary-container)] text-[var(--on-primary-container)]"
-                : "text-slate-400 hover:bg-black/5"
-            }`
-        }>
+        <NavLink 
+            to={to} 
+            className={({ isActive }) =>
+                `theme-nav-item flex flex-col items-center justify-center gap-1 py-2 px-8 transition-all duration-300 active:scale-95 ${isActive
+                    ? "theme-nav-active"
+                    : "text-slate-400 hover:text-slate-200"
+                }`
+            }
+        >
             {icon}
-            <span className="text-[10px] font-bold uppercase">{label}</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider">{label}</span>
         </NavLink>
     );
 };

@@ -29,9 +29,10 @@ export const getSemesterForDate = async (dateStr) => {
 // Default Settings
 export const DEFAULT_SETTINGS = {
     id: 'v8',
-    theme: 'default',
+    theme: 'liquid-glass', // 'liquid-glass' (default) | 'classic' | 'oled'
     language: 'pt',
     tolerance: 10, // Default 10 minutes if enabled (legacy usage, now toggle)
+    toleranceMode: 'exit', // 'entry' | 'exit'
     notify: false,
     // Sun=[], Mon-Fri=[8h], Sat=[]
     // 480 mins = 8 hours

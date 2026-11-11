@@ -4,39 +4,55 @@ import { M2T, T2M } from '../services/stats';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/UI';
 import { useTranslation } from '../hooks/useTranslation';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Sparkles, Sliders } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { triggerSync, queueSync } from '../services/sync';
+import { IosTimePickerModal } from '../components/IosTimePickerModal';
 
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
-    // We update parent immediately to ensure totals are calculated in real-time
-    // Local state is still useful if we wanted to debounce, but for time inputs immediate is better for UX here.
+    const [pickerTarget, setPickerTarget] = useState(null); // 'start' | 'end' | null
 
     return (
         <div className="flex items-center gap-2">
-            <div className="flex-1 bg-black/30 rounded-lg p-2 flex items-center justify-center">
-                <input
-                    type="time"
-                    value={value?.start || '08:00'}
-                    onChange={(e) => onChange({ ...value, start: e.target.value })}
-                    className="bg-transparent text-sm font-medium outline-none border-none text-center w-full appearance-none"
-                />
-            </div>
-            <span className="opacity-30 text-xs">-</span>
-            <div className="flex-1 bg-black/30 rounded-lg p-2 flex items-center justify-center">
-                <input
-                    type="time"
-                    value={value?.end || '17:00'}
-                    onChange={(e) => onChange({ ...value, end: e.target.value })}
-                    className="bg-transparent text-sm font-medium outline-none border-none text-center w-full appearance-none"
-                />
-            </div>
             <button
+                type="button"
+                onClick={() => setPickerTarget('start')}
+                className="flex-1 bg-black/30 hover:bg-black/50 border border-white/5 rounded-lg p-2 text-sm font-semibold text-white text-center cursor-pointer active:scale-95 transition-all"
+            >
+                {value?.start || '08:00'}
+            </button>
+            <span className="opacity-30 text-xs">-</span>
+            <button
+                type="button"
+                onClick={() => setPickerTarget('end')}
+                className="flex-1 bg-black/30 hover:bg-black/50 border border-white/5 rounded-lg p-2 text-sm font-semibold text-white text-center cursor-pointer active:scale-95 transition-all"
+            >
+                {value?.end || '17:00'}
+            </button>
+            <button
+                type="button"
                 onClick={onDelete}
                 className="p-1 text-red-500/60 hover:text-red-500"
                 title="Remove shift"
             >
                 <div className="w-5 h-5 flex items-center justify-center bg-white/5 rounded-full text-xs">×</div>
             </button>
+
+            <IosTimePickerModal
+                isOpen={!!pickerTarget}
+                initialTime={pickerTarget === 'start' ? (value?.start || '08:00') : (value?.end || '17:00')}
+                title={pickerTarget === 'start' ? 'Início do Turno' : 'Fim do Turno'}
+                onConfirm={(newTime) => {
+                    if (pickerTarget === 'start') {
+                        onChange({ ...value, start: newTime });
+                    } else if (pickerTarget === 'end') {
+                        onChange({ ...value, end: newTime });
+                    }
+                }}
+                onClose={() => setPickerTarget(null)}
+            />
         </div>
     );
 };
@@ -106,15 +122,62 @@ const WeeklyScheduleEditor = ({ targets, onChange }) => {
     );
 };
 
+function formatBytes(bytes, decimals = 1) {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+const RANDOM_ROBOTS = [
+    '/avatar-robot.png', // The purple horned devil bot
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Felix&colors=blue,cyan',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Aiden&colors=amber,orange',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Midnight&colors=emerald,teal',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Zoe&colors=purple,pink',
+    'https://api.dicebear.com/7.x/bottts/svg?seed=Shadow&colors=slate,zinc'
+];
+
+function getConsistentRandomAvatar(identifier = '') {
+    if (!identifier) return '/avatar-robot.png';
+    let hash = 0;
+    for (let i = 0; i < identifier.length; i++) {
+        hash = (hash << 5) - hash + identifier.charCodeAt(i);
+        hash |= 0;
+    }
+    const idx = Math.abs(hash) % RANDOM_ROBOTS.length;
+    return RANDOM_ROBOTS[idx];
+}
+
 export const SettingsPage = () => {
     const settings = useLiveQuery(() => db.settings.get('v8'));
     const { t } = useTranslation();
+    const { user, isAdmin, storageUsage, logout, refreshStorage } = useAuth();
+    const navigate = useNavigate();
 
     const [backupMsg, setBackupMsg] = useState('');
+    const [syncingNow, setSyncingNow] = useState(false);
+
+    const handleSyncNow = async () => {
+        setSyncingNow(true);
+        try {
+            await triggerSync();
+            await refreshStorage();
+            setBackupMsg('Sync completed!');
+        } catch {
+            setBackupMsg('Sync failed');
+        } finally {
+            setSyncingNow(false);
+            setTimeout(() => setBackupMsg(''), 3000);
+        }
+    };
 
     const saveSetting = async (key, value) => {
         if (settings) {
             await db.settings.update('v8', { [key]: value });
+            queueSync('settings', 'v8');
         }
     };
 
@@ -171,34 +234,169 @@ export const SettingsPage = () => {
         <div className="space-y-6 pb-24">
             <h2 className="text-2xl font-light">{t('settings_title')}</h2>
 
+            {/* Account & Storage */}
+            {user && (
+                <Card className="space-y-4">
+                    <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('account_cloud_storage')}</p>
+                    
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <img
+                                src={getConsistentRandomAvatar(user.email || user.id)}
+                                onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = '/avatar-robot.png';
+                                }}
+                                alt={user.name}
+                                className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-500/25 to-blue-500/25 border border-white/20 p-0.5 object-cover shadow-lg"
+                            />
+                            <div>
+                                <p className="text-sm font-semibold">{user.name}</p>
+                                <p className="text-xs opacity-60">{user.email}</p>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={logout}
+                            title="Sign out"
+                            className="p-2 text-red-400/80 hover:text-red-400 hover:bg-white/5 rounded-xl transition-colors"
+                        >
+                            <LogOut size={18} />
+                        </button>
+                    </div>
+
+                    {/* Storage Usage Bar */}
+                    {(() => {
+                        const limitMb = storageUsage?.storageLimitMb || 50;
+                        const limitBytes = storageUsage?.storageLimitBytes || (limitMb * 1024 * 1024);
+                        const totalBytes = storageUsage?.totalBytes || 0;
+                        const percent = Math.min(100, Math.max(1, (totalBytes / limitBytes) * 100));
+
+                        return (
+                            <div className="bg-white/5 p-3 rounded-xl space-y-2 border border-white/5">
+                                <div className="flex justify-between items-center text-xs">
+                                    <div className="flex items-center gap-1.5 opacity-80">
+                                        <HardDrive size={13} className="text-[var(--primary)]" />
+                                        <span>{t('storage_used')}</span>
+                                    </div>
+                                    <span className="font-semibold text-[var(--primary)]">
+                                        {formatBytes(totalBytes)} / {limitMb} MB
+                                    </span>
+                                </div>
+
+                                <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-[var(--primary)] rounded-full transition-all duration-300"
+                                        style={{ width: `${percent}%` }}
+                                    />
+                                </div>
+
+                                <div className="flex justify-between text-[10px] opacity-60 pt-0.5">
+                                    <span>Records: {formatBytes(storageUsage?.dbBytes || 0)} ({storageUsage?.recordsCount || 0} days)</span>
+                                    <span>Photos: {formatBytes(storageUsage?.filesBytes || 0)} ({storageUsage?.filesCount || 0})</span>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    <div className="flex gap-2 pt-1">
+                        <button
+                            onClick={handleSyncNow}
+                            disabled={syncingNow}
+                            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 active:scale-[0.99] rounded-xl text-xs font-medium flex items-center justify-center gap-2 transition-all cursor-pointer"
+                        >
+                            <RefreshCw size={14} className={syncingNow ? 'animate-spin' : ''} />
+                            {syncingNow ? '...' : t('sync_now')}
+                        </button>
+
+                        {isAdmin && (
+                            <button
+                                onClick={() => navigate('/admin')}
+                                className="flex-1 py-2.5 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all border border-purple-500/30 cursor-pointer"
+                            >
+                                <ShieldCheck size={14} />
+                                Admin Dashboard
+                            </button>
+                        )}
+                    </div>
+                </Card>
+            )}
+
             {/* Data Backup */}
             <Card className="space-y-4">
-                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">Data Management</p>
+                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('data_management')}</p>
                 <div className="flex gap-3">
-                    <button onClick={handleExport} className="flex-1 bg-white/5 py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-white/10">
-                        <Download size={16} /> Backup
+                    <button onClick={handleExport} className="flex-1 bg-white/5 py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-white/10 cursor-pointer">
+                        <Download size={16} /> {t('backup')}
                     </button>
                     <label className="flex-1 bg-white/5 py-3 rounded-xl font-medium flex items-center justify-center gap-2 hover:bg-white/10 cursor-pointer">
-                        <Upload size={16} /> Restore
+                        <Upload size={16} /> {t('restore')}
                         <input type="file" accept=".json" className="hidden" onChange={handleImport} />
                     </label>
                 </div>
                 {backupMsg && <p className="text-center text-xs text-[var(--primary)]">{backupMsg}</p>}
             </Card>
 
+            {/* Visual Theme Selection */}
+            {(() => {
+                const activeTheme = (!settings?.theme || settings.theme === 'default') ? 'liquid-glass' : settings.theme;
+                return (
+                    <Card className="space-y-3">
+                        <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('theme_title') || 'Visual Theme'}</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={() => saveSetting('theme', 'liquid-glass')}
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                                    activeTheme === 'liquid-glass'
+                                        ? 'bg-blue-600/30 text-white border-blue-400/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                }`}
+                            >
+                                <Sparkles size={16} className="text-blue-400" />
+                                <span>Liquid Glass</span>
+                            </button>
+
+                            <button
+                                onClick={() => saveSetting('theme', 'classic')}
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                                    activeTheme === 'classic'
+                                        ? 'bg-slate-700/50 text-white border-slate-400/50 shadow-md'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                }`}
+                            >
+                                <Sliders size={16} className="text-slate-400" />
+                                <span>Classic Dark</span>
+                            </button>
+
+                            <button
+                                onClick={() => saveSetting('theme', 'oled')}
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${
+                                    activeTheme === 'oled'
+                                        ? 'bg-black text-white border-white/40 shadow-md'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                }`}
+                            >
+                                <div className="w-4 h-4 rounded-full bg-black border border-white/40" />
+                                <span>OLED Black</span>
+                            </button>
+                        </div>
+                    </Card>
+                );
+            })()}
+
             {/* Language */}
             <Card className="space-y-4">
                 <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('lang_title')}</p>
                 <div className="flex gap-2">
-                    <button onClick={() => saveSetting('language', 'pt')} className={`flex-1 py-3 rounded-xl border font-medium ${settings.language === 'pt' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>Português</button>
-                    <button onClick={() => saveSetting('language', 'en')} className={`flex-1 py-3 rounded-xl border font-medium ${settings.language === 'en' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>English</button>
-                    <button onClick={() => saveSetting('language', 'fa')} className={`flex-1 py-3 rounded-xl border font-medium ${settings.language === 'fa' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>فارسی</button>
+                    <button onClick={() => saveSetting('language', 'pt')} className={`flex-1 py-3 rounded-xl border font-medium cursor-pointer ${settings.language === 'pt' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>Português</button>
+                    <button onClick={() => saveSetting('language', 'en')} className={`flex-1 py-3 rounded-xl border font-medium cursor-pointer ${settings.language === 'en' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>English</button>
+                    <button onClick={() => saveSetting('language', 'fa')} className={`flex-1 py-3 rounded-xl border font-medium cursor-pointer ${settings.language === 'fa' ? 'bg-[var(--primary)] text-white border-transparent' : 'border-white/10'}`}>فارسی</button>
                 </div>
             </Card>
 
             {/* Preferences (Notifications & Tolerance) */}
             <Card className="space-y-4">
-                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">Preferences</p>
+                <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('preferences')}</p>
 
                 <div className="flex items-center justify-between">
                     <span className="text-sm">{t('notify_desc')}</span>
@@ -228,6 +426,34 @@ export const SettingsPage = () => {
                         <div className="w-11 h-6 bg-slate-300 dark:bg-white/20 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--primary)]"></div>
                     </label>
                 </div>
+
+                {!!settings.tolerance && (
+                    <div className="pt-2 border-t border-white/5 space-y-2">
+                        <span className="text-xs text-slate-400 block">{t('tolerance_mode_title')}</span>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => saveSetting('toleranceMode', 'entry')}
+                                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                                    (settings.toleranceMode || 'exit') === 'entry'
+                                        ? 'bg-[var(--primary)] text-white border-transparent shadow-sm'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                }`}
+                            >
+                                {t('tolerance_on_entry')}
+                            </button>
+                            <button
+                                onClick={() => saveSetting('toleranceMode', 'exit')}
+                                className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-all ${
+                                    (settings.toleranceMode || 'exit') === 'exit'
+                                        ? 'bg-[var(--primary)] text-white border-transparent shadow-sm'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                }`}
+                            >
+                                {t('tolerance_on_exit')}
+                            </button>
+                        </div>
+                    </div>
+                )}
             </Card>
 
             {/* Semester Management */}
