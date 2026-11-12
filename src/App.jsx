@@ -18,9 +18,14 @@ function AppRoutes() {
   const [splashFinished, setSplashFinished] = useState(false);
   const location = useLocation();
   const previousPageRef = useRef(location.pathname);
+  const isInitialMount = useRef(true);
   const order = { '/': 0, '/settings': 1, '/admin': 2 };
+  
+  const isInitial = isInitialMount.current;
   const direction = (order[location.pathname] ?? 0) >= (order[previousPageRef.current] ?? 0) ? 1 : -1;
+
   useEffect(() => {
+    isInitialMount.current = false;
     previousPageRef.current = location.pathname;
   }, [location.pathname]);
 
@@ -48,7 +53,7 @@ function AppRoutes() {
     <>
       {needsMigration && <MigrationProgressModal />}
       <Layout>
-        <div key={location.pathname} className={`page-transition-container w-full ${direction < 0 ? 'page-from-left' : 'page-from-right'}`}>
+        <div key={location.pathname} className={`page-transition-container w-full ${isInitial ? '' : direction < 0 ? 'page-from-left' : 'page-from-right'}`}>
           <Routes location={location}>
             <Route path="/" element={<HomePage />} />
             <Route path="/settings" element={<SettingsPage />} />

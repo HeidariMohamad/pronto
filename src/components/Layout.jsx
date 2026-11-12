@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Fingerprint, Sliders, ShieldCheck, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { subscribeSyncStatus } from '../services/sync';
@@ -13,9 +13,11 @@ export const Layout = ({ children }) => {
     const [syncStatus, setSyncStatus] = useState('idle');
     const mainRef = useRef(null);
     const pullStart = useRef(null);
+    const swipeStart = useRef(null);
     const [pullDistance, setPullDistance] = useState(0);
     const [refreshing, setRefreshing] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
 
     useEffect(() => {
         return subscribeSyncStatus(setSyncStatus);
@@ -57,16 +59,23 @@ export const Layout = ({ children }) => {
     const statusInfo = getStatusIndicator();
 
     const handleTouchStart = (event) => {
-        if (refreshing || event.touches.length !== 1 || event.target.closest('button, input, textarea, select, [role="dialog"]')) return;
+        if (event.touches.length !== 1) return;
+        const target = event.target;
+        if (target.closest('button, input, textarea, select, [role="dialog"], [role="menu"]')) return;
+
+        swipeStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY, time: Date.now() };
+
+        if (refreshing) return;
         const root = document.getElementById('root');
         if ((root?.scrollTop || 0) > 0 || (mainRef.current?.scrollTop || 0) > 0) return;
-        let element = event.target;
+        let element = target;
         while (element && element !== mainRef.current) {
             if (element.scrollTop > 0) return;
             element = element.parentElement;
         }
         pullStart.current = { x: event.touches[0].clientX, y: event.touches[0].clientY };
     };
+
     const handleTouchMove = (event) => {
         if (!pullStart.current || event.touches.length !== 1) return;
         const dy = event.touches[0].clientY - pullStart.current.y;
@@ -78,13 +87,33 @@ export const Layout = ({ children }) => {
         }
         setPullDistance(Math.min(90, Math.max(0, dy)));
     };
-    const handleTouchEnd = () => {
+
+    const handleTouchEnd = (event) => {
         pullStart.current = null;
         if (pullDistance >= 70 && !refreshing) {
             setRefreshing(true);
             refreshApp();
         }
         setPullDistance(0);
+
+        if (swipeStart.current && event.changedTouches?.length === 1) {
+            const dx = event.changedTouches[0].clientX - swipeStart.current.x;
+            const dy = event.changedTouches[0].clientY - swipeStart.current.y;
+            const dt = Date.now() - swipeStart.current.time;
+            // Fluid horizontal swipe: > 55px, horizontally dominant, fast gesture (< 450ms)
+            if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.8 && dt < 450) {
+                if (dx < 0) {
+                    // Swiped Left -> navigate to next tab
+                    if (location.pathname === '/') navigate('/settings');
+                    else if (location.pathname === '/settings' && isAdmin) navigate('/admin');
+                } else {
+                    // Swiped Right -> navigate to previous tab
+                    if (location.pathname === '/settings') navigate('/');
+                    else if (location.pathname === '/admin') navigate('/settings');
+                }
+            }
+        }
+        swipeStart.current = null;
     };
 
     return (
@@ -110,7 +139,7 @@ export const Layout = ({ children }) => {
 
             {/* Main Content */}
             {(pullDistance > 10 || refreshing) && <div role="status" aria-live="polite" className="fixed top-[calc(4.5rem+env(safe-area-inset-top))] left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full bg-[#1b263b] border border-white/10 px-3 py-2 shadow-xl text-xs text-slate-200"><RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />{refreshing ? t('Refreshing…') : pullDistance >= 70 ? t('Release to refresh') : t('Pull to refresh')}</div>}
-            <main ref={mainRef} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={() => { pullStart.current = null; setPullDistance(0); }} className="flex-1 p-4 pt-[calc(4.5rem+env(safe-area-inset-top))] max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto no-scrollbar relative z-10">
+            <main ref={mainRef} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd} onTouchCancel={() => { pullStart.current = null; swipeStart.current = null; setPullDistance(0); }} className="flex-1 p-4 pt-[calc(4.5rem+env(safe-area-inset-top))] max-w-[440px] mx-auto w-full space-y-4 pb-28 overflow-y-auto overflow-x-hidden no-scrollbar relative z-10">
                 <NotificationBanner />
                 {children}
             </main>
