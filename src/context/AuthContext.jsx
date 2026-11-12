@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { db } from '../services/db';
 import { pullAllFromServer } from '../services/sync';
+import { startOfflinePhotoSync } from '../services/offlinePhotos';
 
 const AuthContext = createContext();
 
@@ -17,6 +18,11 @@ export const AuthProvider = ({ children }) => {
   const [storageUsage, setStorageUsage] = useState(null);
   const [loading, setLoading] = useState(true);
   const [needsMigration, setNeedsMigration] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    return startOfflinePhotoSync(user.id);
+  }, [user?.id]);
 
   const checkMigrationNeed = async () => {
     try {

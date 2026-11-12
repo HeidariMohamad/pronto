@@ -9,6 +9,14 @@ db.version(1).stores({
     pending_sync: '++id, collection, docId, action, data' // Queue for sync
 });
 
+db.version(2).stores({
+    records: 'date, note',
+    settings: 'id',
+    semesters: '++id, startDate, endDate',
+    pending_sync: '++id, collection, docId, action, data',
+    offline_photos: '&[userId+url], userId'
+});
+
 // Helper to get today's ISO string (YYYY-MM-DD) in LOCAL time
 export const toLocalISOString = (date) => {
     const year = date.getFullYear();

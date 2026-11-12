@@ -82,6 +82,54 @@ function userTasks(user) {
   return { tasks, unsupported };
 }
 
+// Older optimizer runs retained the original file but did not link an identical
+// Base64 copy from a restored backup to that file. Recover only exact matches.
+function recoverFileAliases(userId) {
+  if (path.basename(userId) !== userId) return 0;
+  const root = path.resolve(process.env.UPLOAD_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '../uploads'));
+  const backupDir = path.join(path.dirname(root), 'photo-optimization-backups', userId);
+  if (!fs.existsSync(backupDir)) return 0;
+  let recovered = 0;
+  const lookup = db.prepare('SELECT filename FROM files WHERE user_id = ? AND id = ?');
+  const insert = db.prepare('INSERT OR IGNORE INTO optimized_photo_aliases (user_id, record_date, entry_identity, original_hash, replacement_url) VALUES (?, ?, ?, ?, ?)');
+  for (const name of fs.readdirSync(backupDir)) {
+    if (!/^[0-9a-f-]{36}\.json$/i.test(name)) continue;
+    try {
+      const metadata = JSON.parse(fs.readFileSync(path.join(backupDir, name), 'utf8'));
+      if (metadata.kind !== 'file' || metadata.userId !== userId || path.basename(metadata.filename || '') !== metadata.filename) continue;
+      const file = lookup.get(userId, metadata.fileId);
+      if (!file || file.filename !== metadata.filename) continue;
+      const ext = path.extname(file.filename).toLowerCase();
+      const mime = ({ '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' })[ext];
+      if (!mime) continue;
+      const original = fs.readFileSync(path.join(backupDir, `${name.slice(0, -5)}${ext}`));
+      if (createHash('sha256').update(original).digest('hex') !== metadata.originalHash) continue;
+      const processed = db.prepare('SELECT content_hash FROM optimizer_processed_files WHERE user_id = ? AND file_id = ?').get(userId, metadata.fileId);
+      const currentFile = fs.readFileSync(path.join(root, userId, file.filename));
+      if (!processed || createHash('sha256').update(currentFile).digest('hex') !== processed.content_hash) continue;
+      const hash = createHash('sha256').update(`data:${mime};base64,${original.toString('base64')}`).digest('hex');
+      const url = `/uploads/${userId}/${file.filename}`;
+      let recoveredInTransaction = 0;
+      runTransaction(() => {
+        for (const row of db.prepare('SELECT date, entries FROM records WHERE user_id = ?').all(userId)) {
+          const entries = JSON.parse(row.entries || '[]');
+          let changed = false;
+          entries.forEach((entry, index) => {
+            const photo = entry?.photo;
+            const matchesOriginal = typeof photo === 'string' && photo.startsWith('data:image/') && createHash('sha256').update(photo).digest('hex') === hash;
+            if (photo !== url && !matchesOriginal) return;
+            insert.run(userId, row.date, entry.id == null ? `index-${index}` : `id-${String(entry.id)}`, hash, url);
+            if (matchesOriginal) { entries[index] = { ...entry, photo: url }; changed = true; recoveredInTransaction++; }
+          });
+          if (changed) db.prepare('UPDATE records SET entries = ? WHERE user_id = ? AND date = ?').run(JSON.stringify(entries), userId, row.date);
+        }
+      });
+      recovered += recoveredInTransaction;
+    } catch (err) { console.warn('Could not recover an optimized photo mapping:', err.message); }
+  }
+  return recovered;
+}
+
 async function preparePhoto(userId, task) {
   let source, original, mime;
   if (task.kind === 'embedded') {
@@ -127,9 +175,11 @@ async function run(job, handler, users) {
   try {
     const work = [];
     for (const user of users) {
+      const before = getStorageUsage(user.id).totalBytes;
+      const recovered = job.mode === 'optimize' ? recoverFileAliases(user.id) : 0;
       const { tasks, unsupported } = userTasks(user);
       const usage = getStorageUsage(user.id).totalBytes;
-      const summary = { id: user.id, name: user.name, email: user.email, beforeBytes: usage, afterBytes: usage, total: tasks.length, processed: 0, optimized: 0, skipped: unsupported, failed: 0, savedBytes: 0, estimatedBytes: 0 };
+      const summary = { id: user.id, name: user.name, email: user.email, beforeBytes: before, afterBytes: usage, total: tasks.length, processed: 0, optimized: 0, recovered, skipped: unsupported, failed: 0, savedBytes: Math.max(0, before - usage), estimatedBytes: 0 };
       job.users.push(summary);
       job.total += tasks.length;
       work.push({ user, tasks, summary });

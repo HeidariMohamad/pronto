@@ -88,6 +88,17 @@ function optimizePhoto(req, res) {
       const original = fs.readFileSync(originalPath);
       if (photoHash(original) !== expectedHash) return res.status(409).json({ error: 'Photo changed' });
       if (image.bytes.length >= original.length) return res.json({ optimized: false });
+      // A restored backup can contain the exact same image as an embedded data URL.
+      // Remember the original bytes for each referencing punch before replacing the file.
+      const url = `/uploads/${userId}/${file.filename}`;
+      const originalDataHash = photoHash(`data:${image.mime};base64,${original.toString('base64')}`);
+      const references = [];
+      for (const row of db.prepare('SELECT date, entries FROM records WHERE user_id = ?').all(userId)) {
+        const entries = JSON.parse(row.entries || '[]');
+        entries.forEach((entry, index) => {
+          if (entry?.photo === url) references.push({ date: row.date, identity: entry.id == null ? `index-${index}` : `id-${String(entry.id)}` });
+        });
+      }
       const backupId = randomUUID();
       const backupPath = path.join(backupDir, `${backupId}${ext}`);
       fs.writeFileSync(backupPath, original, { flag: 'wx', mode: 0o600 });
@@ -99,6 +110,8 @@ function optimizePhoto(req, res) {
       try { runTransaction(() => {
         db.prepare('UPDATE files SET size_bytes = ? WHERE user_id = ? AND id = ?').run(image.bytes.length, userId, fileId);
         db.prepare('INSERT OR REPLACE INTO optimizer_processed_files (user_id, file_id, content_hash) VALUES (?, ?, ?)').run(userId, fileId, photoHash(image.bytes));
+        const addAlias = db.prepare('INSERT OR IGNORE INTO optimized_photo_aliases (user_id, record_date, entry_identity, original_hash, replacement_url) VALUES (?, ?, ?, ?, ?)');
+        for (const ref of references) addAlias.run(userId, ref.date, ref.identity, originalDataHash, url);
       }); }
       catch (err) { fs.copyFileSync(backupPath, originalPath); throw err; }
       return res.json({ optimized: true, savedBytes: beforeBytes - getStorageUsage(userId).totalBytes });
@@ -188,6 +201,7 @@ router.get('/metrics', requireAdmin, (req, res) => {
   try {
     const users = getAllUsersStats();
     const defaultLimitMb = getDefaultStorageLimitMb();
+    const now = Date.now();
 
     const summary = users.reduce((acc, u) => {
       acc.totalUsers += 1;
@@ -197,6 +211,9 @@ router.get('/metrics', requireAdmin, (req, res) => {
       acc.totalFilesBytes += u.filesBytes || 0;
       acc.totalBytes += u.totalBytes || 0;
       if (u.is_banned) acc.totalBanned += 1;
+      if (u.lastSeenAt && u.lastSeenAt >= now - 86400000) acc.connected24Hours += 1;
+      if (u.lastSeenAt && u.lastSeenAt >= now - 7 * 86400000) acc.connected7Days += 1;
+      if (!u.lastSeenAt) acc.connectionUnknown += 1;
       return acc;
     }, {
       totalUsers: 0,
@@ -205,7 +222,10 @@ router.get('/metrics', requireAdmin, (req, res) => {
       totalFiles: 0,
       totalDbBytes: 0,
       totalFilesBytes: 0,
-      totalBytes: 0
+      totalBytes: 0,
+      connected24Hours: 0,
+      connected7Days: 0,
+      connectionUnknown: 0
     });
 
     res.json({

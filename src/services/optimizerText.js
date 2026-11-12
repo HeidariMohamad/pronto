@@ -1,5 +1,6 @@
 export const optimizerText = {
   pt: {
+    'Recovered optimized photo links: {count}': 'Links de fotos otimizadas recuperados: {count}',
     'Can optimize: {count} · Skipped: {skipped} · Failed: {failed}': 'Podem ser otimizadas: {count} · Ignoradas: {skipped} · Falhas: {failed}',
     'Previously saved: {size}': 'Economia anterior: {size}',
     'Photo optimizer': 'Otimizador de fotos', 'Preview savings or optimize photos for one user or everyone.': 'Veja a economia estimada ou otimize fotos de um usuário ou de todos.',
@@ -14,6 +15,7 @@ export const optimizerText = {
     'Optimized: {count} · Skipped: {skipped} · Failed: {failed}': 'Otimizadas: {count} · Ignoradas: {skipped} · Falhas: {failed}', 'Current storage by user': 'Armazenamento atual por usuário'
   },
   fa: {
+    'Recovered optimized photo links: {count}': 'پیوند عکس‌های بهینه بازیابی‌شده: {count}',
     'Can optimize: {count} · Skipped: {skipped} · Failed: {failed}': 'قابل بهینه‌سازی: {count} · ردشده: {skipped} · ناموفق: {failed}',
     'Previously saved: {size}': 'صرفه‌جویی پیشین: {size}',
     'Photo optimizer': 'بهینه‌ساز عکس', 'Preview savings or optimize photos for one user or everyone.': 'صرفه‌جویی را برآورد کنید یا عکس‌های یک کاربر یا همه را بهینه کنید.',

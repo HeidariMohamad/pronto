@@ -18,6 +18,7 @@ import {
 import { api } from '../services/api';
 import { db } from '../services/db';
 import { pauseSync, resumeSync } from '../services/sync';
+import { pruneOfflinePhotos, stripSelectedPhotos } from '../services/offlinePhotos';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from '../hooks/useTranslation';
 import { embeddedPhotoKey } from '../services/mergeData';
@@ -125,7 +126,7 @@ function size(bytes) {
 
 export function CloudStorage() {
   const { lang, t } = useTranslation();
-  const { refreshStorage } = useAuth();
+  const { user, refreshStorage } = useAuth();
   const labels = copy[lang] || copy.en;
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
@@ -237,6 +238,7 @@ export function CloudStorage() {
           }
         }
       });
+      if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
       setSelectedKeys(prev => {
         const next = new Set(prev);
         next.delete(`${collection}:${id}`);
@@ -284,6 +286,17 @@ export function CloudStorage() {
         }
       }
 
+      const selectedUrls = new Set(itemsToDelete.filter(item => item.collection === 'photos').map(item => item.photoKey));
+      const embeddedMatches = [];
+      for (const item of itemsToDelete.filter(item => item.collection === 'embeddedPhotos')) {
+        const date = item.id.split(':')[0];
+        const local = await db.records.get(date);
+        for (const [index, entry] of (local?.entries || []).entries()) {
+          if (entry && await embeddedPhotoKey(date, entry, index) === item.photoKey) {
+            embeddedMatches.push({ date, identity: entry.id == null ? `index-${index}` : `id-${String(entry.id)}`, photo: entry.photo });
+          }
+        }
+      }
       const result = await api.post('/api/storage/delete-batch', { items: itemsToDelete });
 
       // Update local storage in one bulk transaction
@@ -308,12 +321,13 @@ export function CloudStorage() {
           for (const changed of result.changedRecords) {
             const local = await db.records.get(changed.date);
             if (local && local.entries) {
-              const cleaned = local.entries.map(e => e?.photo ? { ...e, photo: null } : e);
-              await db.records.update(changed.date, { entries: cleaned, updatedAt: changed.updatedAt });
+              const cleaned = stripSelectedPhotos(changed.date, local.entries, selectedUrls, embeddedMatches);
+              await db.records.update(changed.date, { entries: cleaned, updatedAt: Math.max(local.updatedAt || 0, changed.updatedAt || 0) });
             }
           }
         }
       });
+      if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
 
       setSelectedKeys(new Set());
       await load();
@@ -347,6 +361,7 @@ export function CloudStorage() {
           }
         }
       });
+      if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
 
       setSelectedKeys(new Set());
       await load();
@@ -378,6 +393,7 @@ export function CloudStorage() {
         await db.semesters.clear();
         await db.pending_sync.clear();
       });
+      if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
 
       setSelectedKeys(new Set());
       await load();

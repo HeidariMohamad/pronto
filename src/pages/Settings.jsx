@@ -16,6 +16,7 @@ import { IosTimePickerModal } from '../components/IosTimePickerModal';
 import { CloudStorage } from '../components/CloudStorage';
 import { ContactAdmin } from '../components/ContactAdmin';
 import { refreshApp } from '../services/appUpdate';
+import { pruneOfflinePhotos } from '../services/offlinePhotos';
 import { DeviceBackupStatus } from '../components/BackupStatus';
 
 const appVersion = '0.2.0';
@@ -219,6 +220,7 @@ export const SettingsPage = () => {
                 }
                 if (pending.length) await db.pending_sync.bulkAdd(pending);
             });
+            if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
             setMergeReview(null);
             setBackupMsg(t("Changes saved on this device. Syncing..."));
             await triggerSync();

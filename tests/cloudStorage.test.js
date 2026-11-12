@@ -17,14 +17,15 @@ const uploadDir = path.join(testRoot, 'uploads');
 fs.mkdirSync(uploadDir);
 process.env.UPLOAD_DIR = uploadDir;
 const { db, upsertUser, upsertRecord, upsertSettings, getSettings, getRecords, getDeletedItems, addFileRecord, embeddedPhotoKey: serverPhotoKey } = await import('../server/db.js');
-const { embeddedPhotoKey: clientPhotoKey } = await import('../src/services/mergeData.js');
-const { generateToken, requireAuth } = await import('../server/routes/auth.js');
+const { embeddedPhotoKey: clientPhotoKey, prepareMerge } = await import('../src/services/mergeData.js');
+const { default: auth, generateToken, requireAuth } = await import('../server/routes/auth.js');
 const { default: storage, authorizeStoredUpload } = await import('../server/routes/storage.js');
 const { default: sync } = await import('../server/routes/sync.js');
 const { default: admin } = await import('../server/routes/admin.js');
 const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(cookieParser());
+app.use('/api/auth', auth);
 app.use('/api/storage', storage);
 app.use('/api/sync', sync);
 app.use('/api/admin', admin);
@@ -51,6 +52,24 @@ async function request(id, route, body) {
   });
   return { status: response.status, data: await response.json() };
 }
+
+test('admin sees observed connections and successful syncs, without fabricating older activity', async () => {
+  const id = 'activity-user';
+  upsertUser({ id, google_id: id, email: `${id}@example.com`, name: id });
+  const stats = () => db.prepare('SELECT last_seen_at, last_sync_at FROM users WHERE id = ?').get(id);
+  assert.equal(stats().last_seen_at, null);
+  assert.equal(stats().last_sync_at, null);
+  assert.equal((await request(id, '/api/auth/me')).status, 200);
+  assert.ok(stats().last_seen_at > 0);
+  assert.equal(stats().last_sync_at, null);
+  assert.equal((await request(id, '/api/sync/push', { records: [{ date: '2026-10-01', entries: [] }] })).status, 200);
+  assert.ok(stats().last_sync_at > 0);
+  const metrics = await request('admin', '/api/admin/metrics');
+  assert.equal(metrics.status, 200);
+  assert.equal(metrics.data.users.find(user => user.id === id).lastSyncAt, stats().last_sync_at);
+  assert.ok(metrics.data.summary.connected24Hours >= 1);
+  assert.equal((await request(id, '/api/admin/metrics')).status, 403);
+});
 
 test('inventory, deletion and explicit restore stay scoped to the signed-in account', async () => {
   const day = '2026-01-01';
@@ -118,6 +137,94 @@ test('server optimizer previews and runs per user with admin-only persistent pro
   assert.equal(repeated.users[0].savedBytes, 0);
 });
 
+test('manual backup photos stay optimized after sync, including older file optimizations', async () => {
+  const id = 'backup-restore-user';
+  upsertUser({ id, google_id: id, email: `${id}@example.com`, name: id });
+  const pixels = Buffer.alloc(600 * 600 * 3);
+  for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 19 + Math.floor(i / 73)) % 256;
+  const original = await sharp(pixels, { raw: { width: 600, height: 600, channels: 3 } }).jpeg({ quality: 100 }).toBuffer();
+  const originalData = `data:image/jpeg;base64,${original.toString('base64')}`;
+  const filename = 'backup-photo.jpg';
+  const directory = path.join(uploadDir, id);
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, filename), original);
+  addFileRecord('backup-photo', id, filename, filename, original.length);
+  const url = `/uploads/${id}/${filename}`;
+  const day = '2026-09-01';
+  const entry = { id: 'punch-1', type: 'In', time: '08:00', photo: url };
+  upsertRecord(id, { date: day, entries: [entry], note: 'restored', updatedAt: 10 });
+  const phone = { date: day, entries: [{ ...entry, photo: originalData }], note: 'restored', updatedAt: 10 };
+  const start = async () => {
+    assert.equal((await request('admin', '/api/admin/optimizer', { mode: 'optimize', userId: id })).status, 202);
+    for (let i = 0; i < 200; i++) {
+      const job = (await request('admin', '/api/admin/optimizer')).data.job;
+      if (job.status !== 'running') { assert.equal(job.status, 'completed'); return job; }
+      await delay(20);
+    }
+    throw new Error('Optimizer did not finish');
+  };
+  const first = await start();
+  assert.equal(first.users[0].optimized, 1);
+  let cloud = (await request(id, '/api/sync/pull')).data;
+  let plan = await prepareMerge({ records: [phone] }, cloud);
+  assert.equal(plan.conflicts.length, 0);
+  assert.equal(plan.groups.find(group => group.collection === 'records').options[0].value.entries[0].photo, url);
+  const smallerSize = cloud.storageUsage.totalBytes;
+  assert.equal((await request(id, '/api/sync/push', { records: [phone] })).status, 200);
+  assert.equal((await request(id, '/api/sync/pull')).data.storageUsage.totalBytes, smallerSize);
+  assert.equal(getRecords(id)[0].entries[0].photo, url);
+
+  // Simulate a previously optimized file created before file aliases were tracked.
+  db.prepare('DELETE FROM optimized_photo_aliases WHERE user_id = ?').run(id);
+  const rerun = await start();
+  assert.equal(rerun.users[0].optimized, 0);
+  cloud = (await request(id, '/api/sync/pull')).data;
+  plan = await prepareMerge({ records: [phone] }, cloud);
+  assert.equal(plan.conflicts.length, 0);
+  assert.equal((await request(id, '/api/sync/push', { records: [phone] })).status, 200);
+  assert.equal((await request(id, '/api/sync/pull')).data.storageUsage.totalBytes, smallerSize);
+
+  // A previous app version could already have put the large Base64 copy back.
+  // Recovery must re-use the verified optimized file without discarding notes.
+  db.prepare('UPDATE records SET entries = ?, note = ? WHERE user_id = ? AND date = ?').run(JSON.stringify(phone.entries), 'new note', id, day);
+  assert.ok((await request(id, '/api/sync/pull')).data.storageUsage.totalBytes > smallerSize);
+  const recovery = await start();
+  assert.equal(recovery.users[0].recovered, 1);
+  assert.ok(recovery.users[0].savedBytes > 0);
+  const restored = getRecords(id)[0];
+  assert.equal(restored.entries[0].photo, url);
+  assert.equal(restored.note, 'new note');
+  assert.equal((await request(id, '/api/sync/pull')).data.storageUsage.totalBytes, smallerSize + Buffer.byteLength('new note') - Buffer.byteLength('restored'));
+});
+
+test('an embedded photo from a manually restored backup stays optimized after sync', async () => {
+  const id = 'embedded-restore-user';
+  upsertUser({ id, google_id: id, email: `${id}@example.com`, name: id });
+  const pixels = Buffer.alloc(600 * 600 * 3);
+  for (let i = 0; i < pixels.length; i++) pixels[i] = (i * 31 + Math.floor(i / 89)) % 256;
+  const photo = await sharp(pixels, { raw: { width: 600, height: 600, channels: 3 } }).jpeg({ quality: 100 }).toBuffer();
+  const original = { date: '2026-10-01', entries: [{ id: 'legacy', type: 'In', time: '08:00', photo: `data:image/jpeg;base64,${photo.toString('base64')}` }], note: 'from backup', updatedAt: 10 };
+  // Restore the backup's day to the cloud, then optimize while the phone retains its original copy.
+  assert.equal((await request(id, '/api/sync/push', { records: [original] })).status, 200);
+  assert.equal((await request('admin', '/api/admin/optimizer', { mode: 'optimize', userId: id })).status, 202);
+  let job;
+  for (let i = 0; i < 200; i++) {
+    job = (await request('admin', '/api/admin/optimizer')).data.job;
+    if (job.status !== 'running') break;
+    await delay(20);
+  }
+  assert.equal(job.status, 'completed');
+  assert.equal(job.users[0].optimized, 1);
+  const cloud = (await request(id, '/api/sync/pull')).data;
+  const optimizedSize = cloud.storageUsage.totalBytes;
+  const plan = await prepareMerge({ records: [original] }, cloud, { records: [original] });
+  assert.equal(plan.conflicts.length, 0);
+  assert.equal((await request(id, '/api/sync/push', { records: [original] })).status, 200);
+  const after = (await request(id, '/api/sync/pull')).data;
+  assert.equal(after.storageUsage.totalBytes, optimizedSize);
+  assert.ok(after.records[0].entries[0].photo.startsWith('/uploads/'));
+});
+
 test('admin optimization preserves originals and prevents old clients restoring large embedded photos', async () => {
   const original = 'data:image/jpeg;base64,' + Buffer.alloc(1000, 42).toString('base64');
   const webp = Buffer.from('5249464610000000574542505650382000000000', 'hex');
@@ -146,6 +253,13 @@ test('admin optimization preserves originals and prevents old clients restoring 
   assert.equal(after.entries[0].photo, optimized);
   const pulled = await request('user-a', '/api/sync/pull');
   assert.equal(pulled.data.optimizedPhotos[0].url, optimized);
+  // A migration may re-encode the original before another device optimizes it.
+  const recompressed = 'data:image/webp;base64,' + Buffer.alloc(400, 7).toString('base64');
+  const migrated = { ...record, entries: [{ ...record.entries[0], photo: recompressed }], originalPhotoHashes: { 'id-p1': body.expectedHash }, updatedAt: 25 };
+  assert.equal((await request('user-a', '/api/sync/push', { records: [migrated] })).status, 200);
+  assert.equal(getRecords('user-a').find(item => item.date === record.date).entries[0].photo, optimized);
+  const aliases = (await request('user-a', '/api/sync/pull')).data.optimizedPhotos;
+  assert.ok(aliases.some(item => item.hash === createHash('sha256').update(recompressed).digest('hex') && item.url === optimized));
   // A new photo on the same entry must remain a real change, not be replaced by the alias.
   const replacement = 'data:image/png;base64,bmV3';
   const changed = { ...record, entries: [{ ...record.entries[0], photo: replacement }], updatedAt: 30 };

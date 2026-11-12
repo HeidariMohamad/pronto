@@ -109,6 +109,15 @@ try {
   // column already exists
 }
 
+try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at INTEGER DEFAULT NULL'); } catch { /* Existing database. */ }
+try { db.exec('ALTER TABLE users ADD COLUMN last_sync_at INTEGER DEFAULT NULL'); } catch { /* Existing database. */ }
+
+export function noteUserConnection(userId, sync = false) {
+  const now = Date.now();
+  if (sync) db.prepare('UPDATE users SET last_seen_at = ?, last_sync_at = ? WHERE id = ?').run(now, now, userId);
+  else db.prepare('UPDATE users SET last_seen_at = ? WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?)').run(now, userId, now - 300000);
+}
+
 try {
   db.exec('ALTER TABLE users ADD COLUMN is_banned INTEGER DEFAULT 0;');
 } catch (e) {
@@ -299,6 +308,8 @@ export function getAllUsersStats() {
       is_banned: user.is_banned || 0,
       ban_reason: user.ban_reason || '',
       banned_at: user.banned_at || null,
+      lastSeenAt: user.last_seen_at || null,
+      lastSyncAt: user.last_sync_at || null,
       ...usage
     };
   });
@@ -440,7 +451,7 @@ export function getRecords(userId) {
   }));
 }
 
-export function upsertRecord(userId, { date, entries, note, updatedAt }) {
+export function upsertRecord(userId, { date, entries, note, updatedAt, originalPhotoHashes = {} }) {
   rejectDeletedItem(userId, 'records', date);
   const inputEntries = typeof entries === 'string' ? JSON.parse(entries) : (entries || []);
   const removedPhotos = new Set(db.prepare("SELECT item_id FROM deleted_items WHERE user_id = ? AND collection = 'photos'").all(userId).map(row => row.item_id));
@@ -452,8 +463,13 @@ export function upsertRecord(userId, { date, entries, note, updatedAt }) {
     if (typeof entry?.photo === 'string' && entry.photo.startsWith('data:image/')) {
       const hash = createHash('sha256').update(entry.photo, 'utf8').digest('hex');
       const identity = entry.id == null ? `index-${index}` : `id-${String(entry.id)}`;
-      const replacement = lookupOptimized.get(userId, date, identity, hash)?.replacement_url;
-      if (replacement) return { ...entry, photo: removedPhotos.has(replacement) ? null : replacement };
+      const sourceHash = originalPhotoHashes?.[identity];
+      const replacement = lookupOptimized.get(userId, date, identity, hash)?.replacement_url ||
+        (/^[a-f0-9]{64}$/.test(sourceHash || '') ? lookupOptimized.get(userId, date, identity, sourceHash)?.replacement_url : null);
+      if (replacement) {
+        if (hash !== sourceHash && sourceHash) db.prepare('INSERT OR IGNORE INTO optimized_photo_aliases (user_id,record_date,entry_identity,original_hash,replacement_url) VALUES (?,?,?,?,?)').run(userId, date, identity, hash, replacement);
+        return { ...entry, photo: removedPhotos.has(replacement) ? null : replacement };
+      }
     }
     return entry;
   }));

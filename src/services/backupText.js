@@ -9,6 +9,15 @@ export const backupText = {
     'Refreshing…': 'Refreshing…', 'Checking backup status…': 'Checking backup status…', 'Private & Secure · Self-hosted data storage': 'Private & Secure · Self-hosted data storage'
   },
   pt: {
+    '{count} cloud record days are not on this device. Use Sync Now to review and save them.': '{count} dias de registros da nuvem não estão neste dispositivo. Use Sincronizar agora para revisá-los e salvá-los.',
+    'Linked photos available offline: {saved} of {total}': 'Fotos vinculadas disponíveis offline: {saved} de {total}',
+    'This counts cloud-linked photos in records on this device. Embedded photos are already stored in their records. Sync other cloud records first.': 'Esta contagem inclui fotos vinculadas à nuvem nos registros deste dispositivo. Fotos incorporadas já estão nos registros. Sincronize primeiro os outros registros da nuvem.',
+    'Checking offline photos…': 'Verificando fotos disponíveis offline…',
+    'Cloud photos saved on this device: {saved} of {total}': 'Fotos da nuvem salvas neste dispositivo: {saved} de {total}',
+    'Downloading photos for offline use…': 'Baixando fotos para uso sem internet…',
+    'Connect to the internet to finish saving photos for offline use.': 'Conecte-se à internet para terminar de salvar as fotos para uso offline.',
+    'Some photos could not be saved on this device. Check your connection and device storage, then reopen the app.': 'Não foi possível salvar algumas fotos neste dispositivo. Verifique a conexão e o espaço disponível e reabra o aplicativo.',
+    'This counts photos in records on this device. Sync other cloud records first.': 'Esta contagem inclui fotos dos registros neste dispositivo. Sincronize primeiro os outros registros da nuvem.',
     'Optimize cloud photos': 'Otimizar fotos na nuvem', 'Optimizing photos…': 'Otimizando fotos…', 'Optimize this user’s cloud photos? Original photos will be kept on the server.': 'Otimizar as fotos deste usuário na nuvem? As fotos originais serão mantidas no servidor.', 'Optimizing photos: {current} of {total}': 'Otimizando fotos: {current} de {total}', 'Optimized {count} photos, saving {size}. Skipped or failed: {failed}.': '{count} fotos otimizadas, economizando {size} da cota. Ignoradas ou com falha: {failed}.',
     'Average per saved day: {size}': 'Média por dia salvo: {size}', 'Day size includes saved records and attached photos; averages include days without photos.': 'O tamanho diário inclui registros e fotos anexadas; as médias incluem dias sem fotos.',
     'Attached photo storage': 'Armazenamento de fotos anexadas', 'Photos: {count} · Total: {size}': 'Fotos: {count} · Total: {size}', 'Average per photo: {size}': 'Média por foto: {size}', 'Average photo storage per saved day: {size}': 'Média de fotos por dia salvo: {size}', 'Averages include attached photos in saved record days, including days without photos.': 'As médias incluem fotos anexadas aos dias salvos, inclusive dias sem fotos.', 'Photo': 'Foto', 'View photo': 'Ver foto', 'Hide photo': 'Ocultar foto', 'Saved photo': 'Foto salva', 'Could not load photo': 'Não foi possível carregar a foto', 'No saved photos for this day': 'Nenhuma foto salva neste dia',
@@ -23,6 +32,15 @@ export const backupText = {
     'Failed to sign in with Google': 'Não foi possível entrar com o Google', 'Private & Secure · Self-hosted data storage': 'Privado e seguro · Dados armazenados em servidor próprio'
   },
   fa: {
+    '{count} cloud record days are not on this device. Use Sync Now to review and save them.': '{count} روز از سوابق ابری در این دستگاه نیست. برای بررسی و ذخیره آن‌ها از همگام‌سازی اکنون استفاده کنید.',
+    'Linked photos available offline: {saved} of {total}': 'عکس‌های پیوندشده در دسترس آفلاین: {saved} از {total}',
+    'This counts cloud-linked photos in records on this device. Embedded photos are already stored in their records. Sync other cloud records first.': 'این تعداد شامل عکس‌های پیوندشده به ابر در سوابق این دستگاه است. عکس‌های تعبیه‌شده از قبل در سوابق ذخیره‌اند. ابتدا سایر سوابق ابری را همگام‌سازی کنید.',
+    'Checking offline photos…': 'در حال بررسی عکس‌های آفلاین…',
+    'Cloud photos saved on this device: {saved} of {total}': 'عکس‌های ابری ذخیره‌شده در این دستگاه: {saved} از {total}',
+    'Downloading photos for offline use…': 'در حال دانلود عکس‌ها برای استفاده آفلاین…',
+    'Connect to the internet to finish saving photos for offline use.': 'برای تکمیل ذخیره عکس‌ها جهت استفاده آفلاین به اینترنت متصل شوید.',
+    'Some photos could not be saved on this device. Check your connection and device storage, then reopen the app.': 'ذخیره برخی عکس‌ها در این دستگاه ممکن نشد. اتصال و فضای دستگاه را بررسی و برنامه را دوباره باز کنید.',
+    'This counts photos in records on this device. Sync other cloud records first.': 'این تعداد شامل عکس‌های سوابق همین دستگاه است. ابتدا سایر سوابق ابری را همگام‌سازی کنید.',
     'Optimize cloud photos': 'بهینه‌سازی عکس‌های ابری', 'Optimizing photos…': 'در حال بهینه‌سازی عکس‌ها…', 'Optimize this user’s cloud photos? Original photos will be kept on the server.': 'عکس‌های ابری این کاربر بهینه شوند؟ نسخه‌های اصلی در سرور نگهداری می‌شوند.', 'Optimizing photos: {current} of {total}': 'در حال بهینه‌سازی عکس‌ها: {current} از {total}', 'Optimized {count} photos, saving {size}. Skipped or failed: {failed}.': '{count} عکس بهینه شد و {size} از سهمیه آزاد شد. ردشده یا ناموفق: {failed}.',
     'Average per saved day: {size}': 'میانگین هر روز ذخیره‌شده: {size}', 'Day size includes saved records and attached photos; averages include days without photos.': 'حجم روز شامل سوابق و عکس‌های پیوست‌شده است؛ میانگین روزهای بدون عکس را نیز شامل می‌شود.',
     'Attached photo storage': 'فضای عکس‌های پیوست‌شده', 'Photos: {count} · Total: {size}': 'عکس‌ها: {count} · مجموع: {size}', 'Average per photo: {size}': 'میانگین هر عکس: {size}', 'Average photo storage per saved day: {size}': 'میانگین فضای عکس در هر روز ذخیره‌شده: {size}', 'Averages include attached photos in saved record days, including days without photos.': 'میانگین شامل عکس‌های پیوست‌شده در روزهای ذخیره‌شده، از جمله روزهای بدون عکس است.', 'Photo': 'عکس', 'View photo': 'مشاهده عکس', 'Hide photo': 'پنهان کردن عکس', 'Saved photo': 'عکس ذخیره‌شده', 'Could not load photo': 'بارگیری عکس ممکن نشد', 'No saved photos for this day': 'عکسی برای این روز ذخیره نشده است',

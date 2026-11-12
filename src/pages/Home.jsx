@@ -19,10 +19,13 @@ import { toLocalISOString } from '../services/db';
 import { api } from '../services/api';
 import { CameraCaptureModal } from '../components/CameraCaptureModal';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
+import { OfflinePhoto } from '../components/OfflinePhoto';
+import { useAuth } from '../context/AuthContext';
 
 export const HomePage = () => {
     const [activeDate, setActiveDate] = useState(new Date());
-    const { record, stats, addEntry, updateEntry, deleteEntry, updateNote } = useDailyRecord(toLocalISOString(activeDate));
+    const { record, stats, addEntry, updateEntry, saveUploadedPhoto, deleteEntry, updateNote } = useDailyRecord(toLocalISOString(activeDate));
+    const { user } = useAuth();
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [entryToDelete, setEntryToDelete] = useState(null);
     const [selectedImage, setSelectedImage] = useState(null);
@@ -60,7 +63,8 @@ export const HomePage = () => {
                     const extension = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/png' ? 'png' : 'webp';
                     const uploadRes = await api.uploadPhoto(blob, `punch_${entryId}.${extension}`);
                     if (!uploadRes?.url) throw new Error('Upload returned no photo URL');
-                    await updateEntry(entryId, 'photo', uploadRes.url);
+                    if (!user?.id) throw new Error('Account is unavailable');
+                    await saveUploadedPhoto(entryId, dataUrl, uploadRes.url, blob, user.id);
                     setPhotoMessage('');
                 } catch (err) {
                     console.warn('Photo saved locally; upload failed:', err);
@@ -293,7 +297,7 @@ export const HomePage = () => {
 
                                             <div className="flex items-center gap-2">
                                                 {item.inEntry.photo ? (
-                                                    <img
+                                                    <OfflinePhoto
                                                         src={item.inEntry.photo}
                                                         alt="Punch"
                                                         className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20 active:scale-95 transition-transform"
@@ -342,7 +346,7 @@ export const HomePage = () => {
 
                                             <div className="flex items-center gap-2">
                                                 {item.outEntry.photo ? (
-                                                    <img
+                                                    <OfflinePhoto
                                                         src={item.outEntry.photo}
                                                         alt="Punch"
                                                         className="w-7 h-7 rounded-lg object-cover cursor-pointer border border-white/20 active:scale-95 transition-transform"
@@ -431,7 +435,7 @@ export const HomePage = () => {
                     className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-lg cursor-pointer"
                 >
                     <div className="relative max-w-sm max-h-[80vh] overflow-hidden rounded-3xl border border-white/20 shadow-2xl">
-                        <img src={selectedImage} alt="Expanded punch" className="w-full h-auto object-contain max-h-[75vh]" />
+                        <OfflinePhoto src={selectedImage} alt="Expanded punch" className="w-full h-auto object-contain max-h-[75vh]" />
                         <button
                             onClick={() => setSelectedImage(null)}
                             className="absolute top-3 right-3 p-2 bg-black/60 rounded-full text-white"

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 
 const source = (await readFile(new URL('../src/services/sync.js', import.meta.url), 'utf8'))
   .replace(/^import .*;\s*$/gm, '')
@@ -71,4 +72,30 @@ test('large records are batched and failed batches remain queued', async () => {
   assert.deepEqual(getPending().map(item => item.id), [2]);
   await sync.triggerSync();
   assert.equal(getPending().length, 0);
+});
+
+test('migration reuses an optimized server photo before re-encoding and preserves source hashes', async () => {
+  const photo = 'data:image/jpeg;base64,' + 'A'.repeat(1200);
+  const original = { date: '2026-01-01', entries: [{ id: 'entry', time: '08:00', type: 'In', photo }], updatedAt: 10 };
+  let local = structuredClone(original);
+  const writes = [];
+  const db = {
+    records: { toArray: async () => [structuredClone(local)], get: async () => structuredClone(local), put: async value => { local = value; } },
+    semesters: { toArray: async () => [] }, settings: { get: async () => ({ id: 'v8' }) },
+    pending_sync: { toCollection: () => ({ primaryKeys: async () => [] }), bulkDelete: async () => {} },
+    transaction: async (...args) => args.at(-1)()
+  };
+  const hash = createHash('sha256').update(photo).digest('hex');
+  const url = '/uploads/user/optimized.webp';
+  const api = {
+    get: async () => ({ optimizedPhotos: [{ date: original.date, identity: 'id-entry', hash, url }], deletedItems: [] }),
+    post: async (route, payload) => { writes.push(payload); return { success: true }; }
+  };
+  const optimizeImage = async () => { throw new Error('Already optimized photos should not be re-encoded'); };
+  const sync = new Function('db', 'api', 'navigator', 'localStorage', 'Blob', 'console', 'optimizeImage', `${source}\nreturn { migrateLocalHistory };`)(db, api, { onLine: true }, { getItem: () => 'token' }, Blob, console, optimizeImage);
+  await sync.migrateLocalHistory();
+  assert.equal(writes[0].records[0].entries[0].photo, url);
+  assert.equal(writes[0].records[0].originalPhotoHashes['id-entry'], hash);
+  assert.equal(local.entries[0].photo, url);
+  assert.equal(local.originalPhotoHashes, undefined);
 });

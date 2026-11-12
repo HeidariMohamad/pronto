@@ -191,12 +191,24 @@ export async function migrateLocalHistory(onProgress) {
     });
   }
 
+  // Resolve existing server optimizations before re-encoding legacy photos.
+  // Without this, recompression changes their hash and can re-upload a larger copy.
+  const cloud = await api.get('/api/sync/pull');
+  const aliases = new Map((cloud.optimizedPhotos || []).map(item => [JSON.stringify([item.date, item.identity, item.hash]), item.url]));
+  const deletedPhotos = new Set((cloud.deletedItems || []).filter(item => item.collection === 'photos').map(item => item.id));
   const prepared = [];
   for (const record of allRecords) {
     const entries = [];
-    for (const entry of record.entries || []) {
+    const originalPhotoHashes = {};
+    for (const [index, entry] of (record.entries || []).entries()) {
       if (typeof entry?.photo === 'string' && entry.photo.startsWith('data:image/')) {
         try {
+          const identity = entry.id == null ? `index-${index}` : `id-${String(entry.id)}`;
+          const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(entry.photo));
+          const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+          originalPhotoHashes[identity] = hash;
+          const replacement = aliases.get(JSON.stringify([record.date, identity, hash]));
+          if (replacement && !deletedPhotos.has(replacement)) { entries.push({ ...entry, photo: replacement }); continue; }
           const optimized = await optimizeImage(entry.photo, 1024, 0.75, false);
           entries.push(optimized.dataUrl.length < entry.photo.length ? { ...entry, photo: optimized.dataUrl } : entry);
         } catch (err) {
@@ -205,7 +217,7 @@ export async function migrateLocalHistory(onProgress) {
         }
       } else entries.push(entry);
     }
-    prepared.push({ collection: 'records', value: { ...record, entries }, original: record });
+    prepared.push({ collection: 'records', value: { ...record, entries, originalPhotoHashes }, original: record });
   }
 
   await pushBatches(prepared, async (batch) => {
@@ -213,7 +225,9 @@ export async function migrateLocalHistory(onProgress) {
       for (const item of batch) {
         const current = await db.records.get(item.original.date);
         if (current && JSON.stringify(current) === JSON.stringify(item.original)) {
-          await db.records.put(item.value);
+          const local = { ...item.value };
+          delete local.originalPhotoHashes;
+          await db.records.put(local);
         }
       }
     });

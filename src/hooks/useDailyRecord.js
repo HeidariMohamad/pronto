@@ -2,10 +2,13 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, getTodayISO } from "../services/db";
 import { calculateDailyStats } from "../services/stats";
 import { queueSync } from "../services/sync";
+import { useAuth } from '../context/AuthContext';
+import { cacheUploadedPhoto, pruneOfflinePhotos } from '../services/offlinePhotos';
 
 const nextUpdatedAt = (record) => Math.max(Date.now(), Number(record?.updatedAt || 0) + 1);
 
 export function useDailyRecord(dateStr = getTodayISO()) {
+    const { user } = useAuth();
     const record = useLiveQuery(
         () => db.records.get(dateStr),
         [dateStr]
@@ -58,6 +61,13 @@ export function useDailyRecord(dateStr = getTodayISO()) {
             await db.records.update(dateStr, { entries: newEntries, updatedAt: nextUpdatedAt(current) });
         });
         queueSync('records', dateStr);
+        if (field === 'photo' && user?.id) pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
+    };
+
+    const saveUploadedPhoto = async (id, originalPhoto, url, blob, userId) => {
+        const saved = await cacheUploadedPhoto({ date: dateStr, id, originalPhoto, url, blob, userId });
+        if (saved) queueSync('records', dateStr);
+        return saved;
     };
 
     const deleteEntry = async (id) => {
@@ -68,6 +78,7 @@ export function useDailyRecord(dateStr = getTodayISO()) {
             await db.records.update(dateStr, { entries: newEntries, updatedAt: nextUpdatedAt(current) });
         });
         queueSync('records', dateStr);
+        if (user?.id) pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
     };
 
     const updateNote = async (note) => {
@@ -88,6 +99,7 @@ export function useDailyRecord(dateStr = getTodayISO()) {
         stats,
         addEntry,
         updateEntry,
+        saveUploadedPhoto,
         deleteEntry,
         updateNote
     };

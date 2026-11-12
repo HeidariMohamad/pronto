@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
-import { upsertUser, getUserById, getStorageUsage } from '../db.js';
+import { upsertUser, getUserById, getStorageUsage, noteUserConnection } from '../db.js';
 
 const router = Router();
 
@@ -98,6 +98,7 @@ router.post('/google', async (req, res) => {
     });
 
     const token = generateToken(user);
+    noteUserConnection(user.id);
     const storage = getStorageUsage(user.id);
 
     res.cookie('pronto_session', token, {
@@ -133,6 +134,7 @@ router.get('/me', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  noteUserConnection(user.id);
   const storage = getStorageUsage(user.id);
 
   res.json({

@@ -10,6 +10,7 @@ import {
   upsertSettings,
   getStorageUsage,
   getDeletedItems,
+  noteUserConnection,
   db,
   runTransaction
 } from '../db.js';
@@ -37,6 +38,7 @@ router.get('/pull', requireAuth, (req, res) => {
     const semesters = getSemesters(userId);
     const settings = getSettings(userId);
     const storageUsage = getStorageUsage(userId);
+    noteUserConnection(userId);
 
     res.json({
       records,
@@ -88,6 +90,7 @@ router.post('/push', requireAuth, (req, res) => {
       }
     });
 
+    noteUserConnection(userId, true);
     const storageUsage = getStorageUsage(userId);
     res.json({
       success: true,
@@ -142,6 +145,7 @@ router.post('/migrate', requireAuth, (req, res) => {
       }
     });
 
+    noteUserConnection(userId, true);
     const storageUsage = getStorageUsage(userId);
     res.json({
       success: true,

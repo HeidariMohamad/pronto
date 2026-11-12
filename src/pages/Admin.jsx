@@ -89,7 +89,7 @@ function SavedDays({ records, files, userId, t }) {
 
 export const AdminPage = () => {
   const { user, isAdmin } = useAuth();
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [notifications, setNotifications] = useState([]);
@@ -391,6 +391,16 @@ export const AdminPage = () => {
       </div>
 
       <Card className="space-y-3 bg-white/5 border border-white/10">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-blue-300">{t('User activity')}</h3>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl bg-black/20 p-3"><p className="text-xs text-slate-400">{t('Connected in 24 hours')}</p><p className="mt-1 text-xl font-semibold text-white">{summary.connected24Hours ?? '—'}</p></div>
+          <div className="rounded-xl bg-black/20 p-3"><p className="text-xs text-slate-400">{t('Connected in 7 days')}</p><p className="mt-1 text-xl font-semibold text-white">{summary.connected7Days ?? '—'}</p></div>
+        </div>
+        {summary.connectionUnknown > 0 && <p className="text-xs text-slate-400">{t('Connection time unknown for {count} users', { count: summary.connectionUnknown })}</p>}
+        <p className="text-[11px] leading-relaxed text-slate-500">{t('Connections include automatic app checks, not necessarily active use. History starts when this feature is deployed.')}</p>
+      </Card>
+
+      <Card className="space-y-3 bg-white/5 border border-white/10">
         <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-300"><MessageSquare size={15} />{t("User messages")} ({inbox.length})</div>
         {inboxError && <p role="alert" className="text-xs text-red-300">{t(inboxError)}</p>}
         {!inboxError && inbox.length === 0 && <p className="text-xs text-slate-500">{t("No messages from users yet.")}</p>}
@@ -597,6 +607,12 @@ export const AdminPage = () => {
                 </div>
 
                 {/* Progress bar */}
+                <div className="grid grid-cols-1 gap-1 text-[11px] text-slate-400 sm:grid-cols-2">
+                  <span>{t('Last server connection')}: {u.lastSeenAt ? new Date(u.lastSeenAt).toLocaleString(lang === 'pt' ? 'pt-BR' : lang === 'fa' ? 'fa-IR' : 'en-US') : t('Not recorded yet')}</span>
+                  <span>{t('Last successful upload sync')}: {u.lastSyncAt ? new Date(u.lastSyncAt).toLocaleString(lang === 'pt' ? 'pt-BR' : lang === 'fa' ? 'fa-IR' : 'en-US') : t('Not recorded yet')}</span>
+                  <span>{t('Saved record days')}: {u.recordsCount || 0} · {t('Saved schedules')}: {u.backupCoverage?.schedulesCount || 0}</span>
+                  <span>{t('Uploaded files')}: {u.filesCount || 0} · {t('Most recent saved day')}: {u.backupCoverage?.lastRecordDate || '—'}</span>
+                </div>
                 <div className="w-full h-1.5 bg-black/40 rounded-full overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-300 ${barColor}`}
