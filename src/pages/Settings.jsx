@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { db } from '../services/db';
 import { M2T, T2M } from '../services/stats';
 import { useLiveQuery } from 'dexie-react-hooks';
@@ -7,9 +7,9 @@ import { useTranslation } from '../hooks/useTranslation';
 import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Sparkles, Sliders, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { triggerSync, queueSync } from '../services/sync';
+import { triggerSync, queueSync, pauseSync, resumeSync } from '../services/sync';
 import { api } from '../services/api';
-import { prepareMerge, sameSourceSnapshot } from '../services/mergeData';
+import { prepareMerge, sameSourceSnapshot, selectMergeConflict } from '../services/mergeData';
 import { formatPunchType } from '../services/i18n';
 import { createPortal } from 'react-dom';
 import { IosTimePickerModal } from '../components/IosTimePickerModal';
@@ -172,6 +172,11 @@ export const SettingsPage = () => {
     const [backupMsg, setBackupMsg] = useState('');
     const [syncingNow, setSyncingNow] = useState(false);
     const [mergeReview, setMergeReview] = useState(null);
+    const [applyToAll, setApplyToAll] = useState(false);
+    const [restoreSettings, setRestoreSettings] = useState(false);
+    const reviewPaused = useRef(false);
+    const releaseReview = () => { if (reviewPaused.current) { reviewPaused.current = false; resumeSync(); } };
+    useEffect(() => () => { if (reviewPaused.current) { reviewPaused.current = false; resumeSync(); } }, []);
 
     const finishMerge = async (plan, selections) => {
         setSyncingNow(true);
@@ -183,7 +188,7 @@ export const SettingsPage = () => {
                 semesters: await db.semesters.toArray(),
                 settings: await db.settings.get('v8')
             };
-            const latest = await prepareMerge(device, cloud);
+            const latest = await prepareMerge(device, cloud, null, { restoringBackup: plan.restoringBackup });
             if (!sameSourceSnapshot(plan, latest, 'device') || !sameSourceSnapshot(plan, latest, 'cloud')) {
                 setMergeReview(null);
                 setBackupMsg(t("Data changed during review. Nothing was changed; start again to compare the latest versions."));
@@ -191,7 +196,7 @@ export const SettingsPage = () => {
             }
             const restored = new Map();
             for (const group of plan.groups) {
-                const selected = selections[`${group.collection}:${group.key}`] || group.options[0];
+                const selected = selections[`${group.collection}:${group.key}`] || group.defaultOption || group.options[0];
                 if (group.cloud?.deleted && !selected.deleted) {
                     const result = await api.post('/api/storage/restore', {
                         collection: group.collection, id: String(group.key), deletedAt: group.cloud.value.deletedAt, value: selected.value
@@ -203,7 +208,7 @@ export const SettingsPage = () => {
             await db.transaction('rw', db.records, db.settings, db.semesters, db.pending_sync, async () => {
                 const pending = [];
                 for (const group of plan.groups) {
-                    const selected = selections[`${group.collection}:${group.key}`] || group.options[0];
+                    const selected = selections[`${group.collection}:${group.key}`] || group.defaultOption || group.options[0];
                     if (selected.deleted) {
                         const key = group.collection === 'semesters' && /^\d+$/.test(String(group.key)) ? Number(group.key) : group.key;
                         await db[group.collection].delete(key);
@@ -223,6 +228,7 @@ export const SettingsPage = () => {
             if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
             setMergeReview(null);
             setBackupMsg(t("Changes saved on this device. Syncing..."));
+            releaseReview();
             await triggerSync();
             await refreshStorage();
             setBackupMsg(t("Sync completed. Device and cloud records were compared."));
@@ -230,11 +236,13 @@ export const SettingsPage = () => {
             console.error('Merge or sync failed:', err);
             setBackupMsg(t("Sync could not finish. Your local data is kept; please retry."));
         } finally {
+            releaseReview();
             setSyncingNow(false);
         }
     };
 
     const beginMerge = async (backup = null) => {
+        if (reviewPaused.current) return;
         if (!navigator.onLine || !localStorage.getItem('pronto_token')) {
             setBackupMsg(t("Connect to the internet and sign in before syncing or restoring."));
             return;
@@ -242,6 +250,8 @@ export const SettingsPage = () => {
         setSyncingNow(true);
         setBackupMsg(t("Comparing device and cloud data..."));
         try {
+            reviewPaused.current = true;
+            await pauseSync();
             const cloud = await api.get('/api/sync/pull');
             const device = {
                 records: await db.records.toArray(),
@@ -249,13 +259,18 @@ export const SettingsPage = () => {
                 settings: await db.settings.get('v8')
             };
             const plan = await prepareMerge(device, cloud, backup);
+            setRestoreSettings(false);
             if (plan.conflicts.length) {
                 setBackupMsg(t("Review the differences before syncing."));
+                setApplyToAll(false);
                 setMergeReview({ plan, index: 0, selections: {} });
+            } else if (plan.restoringBackup) {
+                setMergeReview({ plan, index: null, selections: {} });
             } else {
                 await finishMerge(plan, {});
             }
         } catch (err) {
+            releaseReview();
             console.error('Could not compare data:', err);
             setBackupMsg(t("Could not compare cloud data. Nothing was changed; please retry."));
         } finally {
@@ -265,11 +280,11 @@ export const SettingsPage = () => {
 
     const handleSyncNow = () => beginMerge();
 
-    const chooseMergeOption = async (option) => {
+    const chooseMergeOption = async (option, preferredSource = null) => {
         const { plan, index, selections } = mergeReview;
-        const group = plan.conflicts[index];
-        const next = { ...selections, [`${group.collection}:${group.key}`]: option };
-        if (index + 1 < plan.conflicts.length) setMergeReview({ plan, index: index + 1, selections: next });
+        const { selections: next, nextIndex } = selectMergeConflict(plan, index, option, selections, applyToAll, preferredSource);
+        if (nextIndex >= 0) setMergeReview({ plan, index: nextIndex, selections: next });
+        else if (plan.restoringBackup) setMergeReview({ plan, index: null, selections: next });
         else await finishMerge(plan, next);
     };
 
@@ -602,8 +617,49 @@ export const SettingsPage = () => {
             </Card>
 
             {mergeReview && createPortal((() => {
-                const { plan, index } = mergeReview;
+                const { plan, index, selections } = mergeReview;
+                if (index === null) {
+                    const settingGroup = plan.groups.find(item => item.collection === 'settings');
+                    const backupSettings = settingGroup?.options.find(option => option.sources.includes('backup'));
+                    const selected = group => selections[`${group.collection}:${group.key}`] || group.defaultOption || group.options[0];
+                    const records = plan.groups.filter(group => group.collection === 'records' && !selected(group).deleted);
+                    const added = records.filter(group => !group.options.some(option => option.sources.includes('device'))).length;
+                    const missingPhotos = records.reduce((count, group) => count + (selected(group).missingPhotos?.backup || 0), 0);
+                    const choices = { device: 0, backup: 0, shared: 0, cloud: 0, deleted: 0 };
+                    for (const group of plan.conflicts) {
+                        const option = selections[`${group.collection}:${group.key}`];
+                        if (!option) continue;
+                        if (option.deleted) choices.deleted++;
+                        else if (option.sources.includes('device') && option.sources.includes('backup')) choices.shared++;
+                        else if (option.sources.includes('device')) choices.device++;
+                        else if (option.sources.includes('backup')) choices.backup++;
+                        else choices.cloud++;
+                    }
+                    return <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="restore-summary-title">
+                        <div className="theme-card w-full max-w-md max-h-[85dvh] overflow-y-auto p-5 space-y-4 text-white shadow-2xl">
+                            <h3 id="restore-summary-title" className="text-lg font-semibold">{t('Review backup restore')}</h3>
+                            <p className="text-sm text-slate-300">{t('{count} saved days will be added to this device.', { count: added })}</p>
+                            <p className="text-sm text-slate-300">{t('{count} differences reviewed.', { count: plan.conflicts.length })}</p>
+                            {plan.conflicts.length > 0 && <p className="text-xs text-slate-400">{t('Device: {device} · Backup: {backup} · Matching device and backup: {shared} · Cloud: {cloud} · Deleted: {deleted}', choices)}</p>}
+                            {backupSettings && <label className="flex items-start gap-3 rounded-xl border border-white/15 bg-white/5 p-3 text-sm">
+                                <input type="checkbox" checked={restoreSettings} onChange={event => setRestoreSettings(event.target.checked)} className="mt-1" />
+                                <span>{t('Restore settings from the backup')}<span className="block text-xs text-slate-400 mt-1">{t('Otherwise, current device settings are kept, including language and theme.')}</span></span>
+                            </label>}
+                            {missingPhotos > 0 && <p className="rounded-xl bg-amber-500/10 p-3 text-sm text-amber-200">{t('{count} photos in the selected backup records were deleted from the cloud and cannot be restored automatically. They will be missing from the restored records.', { count: missingPhotos })}</p>}
+                            <p className="text-xs text-slate-400">{t('Some backup photos may be cloud links. If the original files are no longer available, those photos cannot be restored from the backup alone.')}</p>
+                            <button disabled={syncingNow} onClick={() => {
+                                const next = { ...selections };
+                                if (restoreSettings && backupSettings) next['settings:v8'] = backupSettings;
+                                finishMerge(plan, next);
+                            }} className="w-full rounded-xl bg-[var(--primary)] p-3 text-sm font-semibold text-white disabled:opacity-50">{t('Restore backup')}</button>
+                            <button disabled={syncingNow} onClick={() => { setMergeReview(null); releaseReview(); setBackupMsg(t('Review cancelled. No data was changed.')); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
+                        </div>
+                    </div>;
+                }
                 const group = plan.conflicts[index];
+                const options = group.options.flatMap(option => applyToAll && plan.restoringBackup && group.collection === 'records' && !option.deleted && option.sources.includes('device') && option.sources.includes('backup')
+                    ? ['device', 'backup'].map(preferredSource => ({ option, preferredSource }))
+                    : [{ option, preferredSource: null }]);
                 return (
                     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="merge-title">
                         <div className="theme-card w-full max-w-md max-h-[85dvh] overflow-y-auto p-5 space-y-4 text-white shadow-2xl">
@@ -615,9 +671,15 @@ export const SettingsPage = () => {
                                 <p className="text-xs text-slate-300 mt-2">{t("Select the version you want to keep. Nothing changes until all differences are reviewed.")}</p>
                                 {group.cloud?.deleted && <p className="text-xs text-amber-300 mt-2">{t("This item was deleted from the cloud. Choosing a device or backup version restores it there.")}</p>}
                             </div>
-                            {group.options.map((option, optionIndex) => (
-                                <button key={optionIndex} disabled={syncingNow} onClick={() => chooseMergeOption(option)} className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-left hover:bg-white/10 space-y-1">
-                                    <span className="block text-sm font-semibold">{option.deleted ? t("Keep deleted from cloud") : option.sources.map(source => ({ device: t("This device"), cloud: t("Cloud"), backup: t("Backup file") }[source])).join(' / ')}</span>
+                            {plan.restoringBackup && group.collection === 'records' && <label className="flex items-start gap-3 rounded-xl border border-white/15 bg-white/5 p-3 text-sm text-slate-200">
+                                <input type="checkbox" checked={applyToAll} onChange={event => setApplyToAll(event.target.checked)} className="mt-1" />
+                                <span>{t("Apply this choice to other conflicting days")}
+                                    <span className="block text-xs text-slate-400 mt-1">{t("Only days with the chosen device or backup version are included. Other differences still need review.")}</span>
+                                </span>
+                            </label>}
+                            {options.map(({ option, preferredSource }, optionIndex) => (
+                                <button key={optionIndex} disabled={syncingNow} onClick={() => chooseMergeOption(option, preferredSource)} className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-left hover:bg-white/10 space-y-1">
+                                    <span className="block text-sm font-semibold">{option.deleted ? t("Keep deleted from cloud") : (preferredSource ? [preferredSource] : option.sources).map(source => ({ device: t("This device"), cloud: t("Cloud"), backup: t("Backup file") }[source])).join(' / ')}</span>
                                     {option.deleted ? (
                                         <span className="block text-xs text-slate-300">{t("Remove this item from this device too.")}</span>
                                     ) : group.collection === 'records' ? (
@@ -632,7 +694,7 @@ export const SettingsPage = () => {
                                     )}
                                 </button>
                             ))}
-                            <button disabled={syncingNow} onClick={() => { setMergeReview(null); setBackupMsg(t("Review cancelled. No data was changed.")); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
+                            <button disabled={syncingNow} onClick={() => { setMergeReview(null); releaseReview(); setBackupMsg(t("Review cancelled. No data was changed.")); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
                         </div>
                     </div>
                 );

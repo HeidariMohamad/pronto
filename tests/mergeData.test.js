@@ -1,9 +1,58 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { prepareMerge, sameSourceSnapshot, embeddedPhotoKey } from '../src/services/mergeData.js';
+import { prepareMerge, sameSourceSnapshot, embeddedPhotoKey, selectMergeConflict } from '../src/services/mergeData.js';
 
 const record = (date, time, updatedAt = 1) => ({ date, entries: [{ type: 'entry', time }], note: '', updatedAt });
+
+test('backup restore merges unique days and keeps device settings despite cloud deletions', async () => {
+  const device = { records: [record('2026-01-01', '08:00'), { date: '2026-01-02', entries: [], note: '' }], settings: { language: 'en' } };
+  const cloud = { deletedItems: [{ collection: 'records', id: '2026-01-01', deletedAt: 5 }, { collection: 'records', id: '2026-01-02', deletedAt: 6 }] };
+  const backup = { records: [record('2026-01-02', '09:00')], settings: { language: 'pt' } };
+  const plan = await prepareMerge(device, cloud, backup);
+  assert.equal(plan.conflicts.length, 0);
+  assert.equal(plan.groups.find(g => g.key === '2026-01-01').defaultOption.sources[0], 'device');
+  assert.equal(plan.groups.find(g => g.key === '2026-01-02').defaultOption.sources[0], 'backup');
+  assert.equal(plan.groups.find(g => g.collection === 'settings').defaultOption.value.language, 'en');
+  assert.equal(plan.groups.find(g => g.collection === 'settings').options.find(o => o.sources.includes('backup')).value.language, 'pt');
+  const latest = await prepareMerge(device, cloud, null, { restoringBackup: true });
+  assert.equal(sameSourceSnapshot(plan, latest, 'device'), true);
+  assert.equal(sameSourceSnapshot(plan, latest, 'cloud'), true);
+});
+
+test('backup restore reports photos removed by cloud deletion rules', async () => {
+  const url = '/uploads/user/deleted.webp';
+  const backup = { records: [{ date: '2026-01-01', entries: [{ photo: url }] }] };
+  const plan = await prepareMerge({}, { deletedItems: [{ collection: 'photos', id: url, deletedAt: 42 }] }, backup);
+  const option = plan.groups[0].options[0];
+  assert.equal(option.value.entries[0].photo, null);
+  assert.equal(option.missingPhotos.backup, 1);
+});
+
+test('bulk choice resolves only remaining day conflicts with the chosen source', async () => {
+  const device = { records: [record('1', '08:00'), record('2', '08:00'), record('3', '08:00')] };
+  const backup = { records: [record('1', '09:00'), record('2', '09:00')] };
+  const cloud = { records: [record('3', '10:00')] };
+  const plan = await prepareMerge(device, cloud, backup);
+  const selected = plan.conflicts[0].options.find(o => o.sources.includes('backup'));
+  const result = selectMergeConflict(plan, 0, selected, {}, true);
+  assert.equal(result.selections['records:2'].sources[0], 'backup');
+  assert.equal(result.selections['records:3'], undefined);
+  assert.equal(plan.conflicts[result.nextIndex].key, '3');
+  const one = selectMergeConflict(plan, 0, selected, {}, false);
+  assert.equal(one.nextIndex, 1);
+});
+
+test('bulk choice can select a shared version by its explicitly selected source', async () => {
+  const device = { records: [record('1', '08:00'), record('2', '08:00')] };
+  const backup = { records: [record('1', '08:00'), record('2', '09:00')] };
+  const cloud = { records: [record('1', '10:00')] };
+  const plan = await prepareMerge(device, cloud, backup);
+  const shared = plan.conflicts[0].options.find(o => o.sources.includes('backup'));
+  const result = selectMergeConflict(plan, 0, shared, {}, true, 'backup');
+  assert.equal(result.selections['records:2'].sources[0], 'backup');
+  assert.equal(result.nextIndex, -1);
+});
 
 test('optimized photos reconcile old device records without masking other edits', async () => {
   const photo = 'data:image/jpeg;base64,YWJj';
