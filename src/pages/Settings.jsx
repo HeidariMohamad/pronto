@@ -4,7 +4,7 @@ import { M2T, T2M } from '../services/stats';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { Card } from '../components/UI';
 import { useTranslation } from '../hooks/useTranslation';
-import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Sparkles, Sliders, AlertTriangle } from 'lucide-react';
+import { Download, Upload, Cloud, HardDrive, LogOut, ShieldCheck, RefreshCw, Sparkles, Sliders, AlertTriangle, Github, Star, ArrowUpRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { triggerSync, queueSync, pauseSync, resumeSync } from '../services/sync';
@@ -18,8 +18,8 @@ import { ContactAdmin } from '../components/ContactAdmin';
 import { refreshApp } from '../services/appUpdate';
 import { pruneOfflinePhotos } from '../services/offlinePhotos';
 import { DeviceBackupStatus } from '../components/BackupStatus';
+import { version as appVersion } from '../../package.json';
 
-const appVersion = '0.2.0';
 
 // Time Range Input Component (Start - End)
 const ShiftTimeInput = ({ value, onChange, onDelete }) => {
@@ -488,8 +488,6 @@ export const SettingsPage = () => {
                 </Card>
             )}
 
-            {user && <ContactAdmin />}
-
             {/* Data Backup */}
             <Card className="space-y-4">
                 <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('data_management')}</p>
@@ -504,50 +502,6 @@ export const SettingsPage = () => {
                 </div>
                 {backupMsg && <p className="text-center text-xs text-[var(--primary)]">{backupMsg}</p>}
             </Card>
-
-            {/* Visual Theme Selection */}
-            {(() => {
-                const activeTheme = (!settings?.theme || settings.theme === 'default') ? 'classic' : settings.theme;
-                return (
-                    <Card className="space-y-3">
-                        <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('theme_title') || 'Visual Theme'}</p>
-                        <div className="grid grid-cols-3 gap-2">
-                            <button
-                                onClick={() => saveSetting('theme', 'liquid-glass')}
-                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'liquid-glass'
-                                        ? 'bg-blue-600/30 text-white border-blue-400/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
-                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                    }`}
-                            >
-                                <Sparkles size={16} className="text-blue-400" />
-                                <span>Liquid Glass</span>
-                            </button>
-
-                            <button
-                                onClick={() => saveSetting('theme', 'classic')}
-                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'classic'
-                                        ? 'bg-slate-700/50 text-white border-slate-400/50 shadow-md'
-                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                    }`}
-                            >
-                                <Sliders size={16} className="text-slate-400" />
-                                <span>Classic Dark</span>
-                            </button>
-
-                            <button
-                                onClick={() => saveSetting('theme', 'oled')}
-                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'oled'
-                                        ? 'bg-black text-white border-white/40 shadow-md'
-                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
-                                    }`}
-                            >
-                                <div className="w-4 h-4 rounded-full bg-black border border-white/40" />
-                                <span>OLED Black</span>
-                            </button>
-                        </div>
-                    </Card>
-                );
-            })()}
 
             {/* Language */}
             <Card className="space-y-4">
@@ -700,26 +654,65 @@ export const SettingsPage = () => {
                 );
             })(), document.body)}
 
-            {/* GitHub Star Plea */}
-            <div className="pt-8 pb-4 text-center space-y-4">
-                <div className="inline-block p-[2px] rounded-2xl bg-gradient-to-r from-yellow-400/30 via-orange-500/30 to-purple-500/30">
-                    <a
-                        href="https://github.com/HeidariMohamad/pronto"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block bg-black/80 backdrop-blur-xl rounded-2xl p-6 hover:bg-black/60 transition-all group"
-                    >
-                        <p className="text-xl mb-1 transform group-hover:scale-110 transition-transform duration-300">⭐</p>
-                        <p className="text-sm font-medium opacity-80 mb-3 bg-gradient-to-r from-yellow-200 to-orange-200 bg-clip-text text-transparent">
-                            {t('github_star_text')}
-                        </p>
-                        <div className="flex items-center justify-center gap-2 text-sm font-bold opacity-100 transition-opacity text-white border border-white/20 rounded-xl py-2 px-4 bg-white/5">
-                            <span>{t('github_button')}</span>
+            {/* Visual Theme Selection */}
+            {(() => {
+                const activeTheme = (!settings?.theme || settings.theme === 'default') ? 'classic' : settings.theme;
+                return (
+                    <Card className="space-y-3">
+                        <p className="text-xs font-bold opacity-50 uppercase tracking-widest">{t('theme_title') || 'Visual Theme'}</p>
+                        <div className="grid grid-cols-3 gap-2">
+                            <button
+                                onClick={() => saveSetting('theme', 'liquid-glass')}
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'liquid-glass'
+                                        ? 'bg-blue-600/30 text-white border-blue-400/50 shadow-[0_0_15px_rgba(59,130,246,0.3)]'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                    }`}
+                            >
+                                <Sparkles size={16} className="text-blue-400" />
+                                <span>Liquid Glass</span>
+                            </button>
+
+                            <button
+                                onClick={() => saveSetting('theme', 'classic')}
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'classic'
+                                        ? 'bg-slate-700/50 text-white border-slate-400/50 shadow-md'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                    }`}
+                            >
+                                <Sliders size={16} className="text-slate-400" />
+                                <span>Classic Dark</span>
+                            </button>
+
+                            <button
+                                onClick={() => saveSetting('theme', 'oled')}
+                                className={`py-3 px-2 rounded-2xl text-xs font-semibold border flex flex-col items-center gap-1.5 transition-all cursor-pointer ${activeTheme === 'oled'
+                                        ? 'bg-black text-white border-white/40 shadow-md'
+                                        : 'border-white/10 hover:bg-white/5 text-slate-300'
+                                    }`}
+                            >
+                                <div className="w-4 h-4 rounded-full bg-black border border-white/40" />
+                                <span>OLED Black</span>
+                            </button>
                         </div>
-                    </a>
+                    </Card>
+                );
+            })()}
+
+            {user && <ContactAdmin />}
+
+            <Card className="space-y-4">
+                <div className="flex items-start gap-3">
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-amber-400/20 bg-amber-400/10 text-amber-300"><Star size={19} /></span>
+                    <div className="min-w-0 pt-0.5">
+                        <p className="text-sm font-semibold text-white">{t('github_heading')}</p>
+                        <p className="mt-1 text-xs leading-relaxed text-slate-400">{t('github_star_text')}</p>
+                    </div>
                 </div>
-                <p className="text-sm font-medium opacity-80 mt-4">v{appVersion} • Made with ☕ and 🍰</p>
-            </div>
+                <a href="https://github.com/HeidariMohamad/pronto" target="_blank" rel="noopener noreferrer" className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white transition-colors hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--primary)]">
+                    <Github size={17} /> {t('github_button')} <ArrowUpRight size={15} className="text-slate-400" />
+                </a>
+            </Card>
+            <p className="pb-4 text-center text-xs font-medium text-slate-500">Pronto V{appVersion}</p>
         </div>
     );
 };
