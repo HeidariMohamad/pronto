@@ -174,14 +174,18 @@ export const SettingsPage = () => {
     const [mergeReview, setMergeReview] = useState(null);
     const [applyToAll, setApplyToAll] = useState(false);
     const [restoreSettings, setRestoreSettings] = useState(false);
+    const [restoreProgress, setRestoreProgress] = useState('');
     const reviewPaused = useRef(false);
     const releaseReview = () => { if (reviewPaused.current) { reviewPaused.current = false; resumeSync(); } };
     useEffect(() => () => { if (reviewPaused.current) { reviewPaused.current = false; resumeSync(); } }, []);
 
     const finishMerge = async (plan, selections) => {
         setSyncingNow(true);
+        let cloudChanges = false;
+        let localSaved = false;
         try {
             // Another tab or device may have changed data while the review was open.
+            setRestoreProgress(t('Checking for recent changes…'));
             const cloud = await api.get('/api/sync/pull');
             const device = {
                 records: await db.records.toArray(),
@@ -195,16 +199,20 @@ export const SettingsPage = () => {
                 return;
             }
             const restored = new Map();
+            const restoreTotal = plan.groups.filter(group => group.cloud?.deleted && !(selections[`${group.collection}:${group.key}`] || group.defaultOption || group.options[0]).deleted).length;
             for (const group of plan.groups) {
                 const selected = selections[`${group.collection}:${group.key}`] || group.defaultOption || group.options[0];
                 if (group.cloud?.deleted && !selected.deleted) {
+                    setRestoreProgress(t('Restoring cloud items: {current} of {total}', { current: restored.size + 1, total: restoreTotal }));
                     const result = await api.post('/api/storage/restore', {
                         collection: group.collection, id: String(group.key), deletedAt: group.cloud.value.deletedAt, value: selected.value
                     });
                     restored.set(`${group.collection}:${group.key}`, result.updatedAt);
+                    cloudChanges = true;
                 }
             }
             const now = Date.now();
+            setRestoreProgress(t('Saving restored data on this device…'));
             await db.transaction('rw', db.records, db.settings, db.semesters, db.pending_sync, async () => {
                 const pending = [];
                 for (const group of plan.groups) {
@@ -225,18 +233,23 @@ export const SettingsPage = () => {
                 }
                 if (pending.length) await db.pending_sync.bulkAdd(pending);
             });
+            localSaved = true;
+            setRestoreProgress(t('Updating offline photos…'));
             if (user?.id) await pruneOfflinePhotos(user.id).catch(err => console.warn('Could not clean up offline photos:', err));
-            setMergeReview(null);
+            setRestoreProgress(t('Syncing restored data to the cloud…'));
             setBackupMsg(t("Changes saved on this device. Syncing..."));
             releaseReview();
             await triggerSync();
             await refreshStorage();
-            setBackupMsg(t("Sync completed. Device and cloud records were compared."));
+            setMergeReview(null);
+            setBackupMsg(t('Sync complete.'));
         } catch (err) {
             console.error('Merge or sync failed:', err);
-            setBackupMsg(t("Sync could not finish. Your local data is kept; please retry."));
+            setMergeReview(null);
+            setBackupMsg(t(localSaved ? 'The data was saved on this device, but cloud sync did not finish. Please sync again.' : cloudChanges ? 'The restore did not finish. Some cloud items were restored; local data was not changed. Please retry.' : 'The restore could not finish. No local data was changed. Please retry.'));
         } finally {
             releaseReview();
+            setRestoreProgress('');
             setSyncingNow(false);
         }
     };
@@ -483,7 +496,7 @@ export const SettingsPage = () => {
                         )}
                     </div>
                     {backupMsg && <p role="status" aria-live="polite" className="text-xs text-slate-200">{backupMsg}</p>}
-                    <DeviceBackupStatus usage={storageUsage} />
+                    <DeviceBackupStatus />
                     <CloudStorage />
                 </Card>
             )}
@@ -592,6 +605,7 @@ export const SettingsPage = () => {
                     return <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="restore-summary-title">
                         <div className="theme-card w-full max-w-md max-h-[85dvh] overflow-y-auto p-5 space-y-4 text-white shadow-2xl">
                             <h3 id="restore-summary-title" className="text-lg font-semibold">{t('Review backup restore')}</h3>
+                            {syncingNow && <div role="status" aria-live="polite" className="rounded-xl border border-blue-400/20 bg-blue-400/10 p-3 text-sm text-blue-100"><span className="flex items-center gap-2"><RefreshCw size={16} className="animate-spin shrink-0" />{restoreProgress || t('Preparing restore…')}</span></div>}
                             <p className="text-sm text-slate-300">{t('{count} saved days will be added to this device.', { count: added })}</p>
                             <p className="text-sm text-slate-300">{t('{count} differences reviewed.', { count: plan.conflicts.length })}</p>
                             {plan.conflicts.length > 0 && <p className="text-xs text-slate-400">{t('Device: {device} · Backup: {backup} · Matching device and backup: {shared} · Cloud: {cloud} · Deleted: {deleted}', choices)}</p>}
@@ -605,7 +619,7 @@ export const SettingsPage = () => {
                                 const next = { ...selections };
                                 if (restoreSettings && backupSettings) next['settings:v8'] = backupSettings;
                                 finishMerge(plan, next);
-                            }} className="w-full rounded-xl bg-[var(--primary)] p-3 text-sm font-semibold text-white disabled:opacity-50">{t('Restore backup')}</button>
+                            }} className="w-full rounded-xl bg-[var(--primary)] p-3 text-sm font-semibold text-white disabled:opacity-50">{syncingNow ? t('Restoring…') : t('Restore backup')}</button>
                             <button disabled={syncingNow} onClick={() => { setMergeReview(null); releaseReview(); setBackupMsg(t('Review cancelled. No data was changed.')); }} className="w-full py-2 text-sm text-slate-300">{t('cancel')}</button>
                         </div>
                     </div>;

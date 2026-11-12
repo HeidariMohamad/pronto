@@ -89,6 +89,15 @@ test('identical content is not a conflict, even if timestamps differ', async () 
   assert.deepEqual(plan.groups[0].options[0].sources, ['device', 'cloud']);
 });
 
+test('large embedded photos use compact comparison signatures', async () => {
+  const photo = `data:image/jpeg;base64,${'a'.repeat(2 * 1024 * 1024)}`;
+  const item = { date: '2026-01-01', entries: [{ photo }] };
+  const plan = await prepareMerge({ records: [item] }, { records: [item] }, { records: [item] });
+  assert.equal(plan.conflicts.length, 0);
+  assert.equal(plan.groups[0].options[0].signature.length, 64);
+  assert.deepEqual(plan.groups[0].options[0].sources, ['device', 'cloud', 'backup']);
+});
+
 test('detects new, removed and changed data before applying a review', async () => {
   const original = await prepareMerge({ records: [record('2026-01-01', '08:00')] }, { records: [record('2026-01-01', '09:00', 2)] });
   assert.equal(sameSourceSnapshot(original, await prepareMerge({ records: [record('2026-01-01', '08:00')] }, { records: [record('2026-01-01', '09:00', 2)] }), 'cloud'), true);

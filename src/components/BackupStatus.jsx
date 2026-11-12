@@ -20,7 +20,7 @@ export function CloudBackupSummary({ usage }) {
   </div>;
 }
 
-export function DeviceBackupStatus({ usage }) {
+export function DeviceBackupStatus() {
   const { t } = useTranslation();
   const [cloud, setCloud] = useState(null);
   const [unavailable, setUnavailable] = useState(false);
@@ -48,17 +48,17 @@ export function DeviceBackupStatus({ usage }) {
     return () => { active = false; };
   }, [records, cloud]);
   const missingDays = records && cloud ? (cloud.records || []).filter(saved => !records.some(record => record.date === saved.date)).length : null;
-  return <div className="space-y-2">
-    <CloudBackupSummary usage={usage} />
-    <p className="text-xs text-slate-300" role="status">{unavailable ? t('Backup status could not be verified. Connect and retry syncing.') : matching === null ? t('Checking backup status…') : t('{saved} of {total} device record days match the cloud. {pending} need backup or have changes.', { saved: matching, total: records.length, pending: records.length - matching })}</p>
-    <p className="text-[11px] text-slate-500">{t('Device status covers this browser only. Unsynced data on other devices is not visible to admins.')}</p>
-    {missingDays > 0 && <p className="text-xs text-amber-300">{t('{count} cloud record days are not on this device. Use Sync Now to review and save them.', { count: missingDays })}</p>}
-    <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-300 space-y-1" role="status">
-      {offlinePhotos.state === 'checking' ? <p className="font-medium">{t('Checking offline photos…')}</p> : <p className="font-medium">{t('Linked photos available offline: {saved} of {total}', { saved: offlinePhotos.cached, total: offlinePhotos.total })}</p>}
-      {offlinePhotos.state === 'syncing' && <p>{t('Downloading photos for offline use…')}</p>}
-      {offlinePhotos.state === 'offline' && offlinePhotos.cached < offlinePhotos.total && <p>{t('Connect to the internet to finish saving photos for offline use.')}</p>}
-      {offlinePhotos.state === 'error' && <p>{t('Some photos could not be saved on this device. Check your connection and device storage, then reopen the app.')}</p>}
-      <p className="text-slate-500">{t('This counts cloud-linked photos in records on this device. Embedded photos are already stored in their records. Sync other cloud records first.')}</p>
-    </div>
+  const pending = records && matching !== null ? Math.max(0, records.length - matching) : null;
+  return <div className="rounded-2xl bg-white/5 border border-white/10 p-4 space-y-2 text-xs text-slate-300" role="status" aria-live="polite">
+    <h4 className="font-semibold text-blue-300">{t('Backup status')}</h4>
+    {unavailable ? <p className="text-amber-300">{t('Could not check your backup. Connect and try again.')}</p> : matching === null || !records || !cloud ? <p>{t('Checking backup status…')}</p> : <>
+      <p>{records.length ? t('{saved} of {total} days on this device match your backup.', { saved: matching, total: records.length }) : t('No saved days on this device.')}</p>
+      {pending > 0 && <p className="text-amber-300">{t('{count} days need to be backed up or reviewed.', { count: pending })}</p>}
+      {missingDays > 0 && <p className="text-amber-300">{t('{count} days in your backup are not on this device. Tap Sync Now to review them.', { count: missingDays })}</p>}
+    </>}
+    {offlinePhotos.total > 0 && <p>{t('Downloaded photos available offline: {saved} of {total}', { saved: offlinePhotos.cached, total: offlinePhotos.total })}</p>}
+    {offlinePhotos.state === 'syncing' && offlinePhotos.cached < offlinePhotos.total && <p>{t('Downloading photos for offline use…')}</p>}
+    {offlinePhotos.state === 'offline' && offlinePhotos.cached < offlinePhotos.total && <p className="text-amber-300">{t('Connect to the internet to finish saving photos for offline use.')}</p>}
+    {offlinePhotos.state === 'error' && <p className="text-amber-300">{t('Some photos could not be saved on this device. Check your connection and device storage, then reopen the app.')}</p>}
   </div>;
 }

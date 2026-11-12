@@ -1,11 +1,16 @@
 // Compare the meaningful content, not timestamps assigned by different devices.
-function content(collection, value) {
+async function content(collection, value) {
+  let serialized;
   if (collection === 'records') {
-    return JSON.stringify({ entries: value.entries || [], note: value.note || '' });
+    serialized = JSON.stringify({ entries: value.entries || [], note: value.note || '' });
+  } else {
+    const rest = { ...value };
+    delete rest.updatedAt;
+    serialized = JSON.stringify(rest);
   }
-  const rest = { ...value };
-  delete rest.updatedAt;
-  return JSON.stringify(rest);
+  // Keeping full JSON signatures duplicates large Base64 photos in memory.
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(serialized));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
 }
 
 export async function embeddedPhotoKey(date, entry, index) {
@@ -28,12 +33,12 @@ export async function prepareMerge(device, cloud, backup = null, { restoringBack
       embeddedIdentities.add(JSON.stringify([date, identity]));
     } catch { /* Ignore invalid legacy markers. */ }
   }
-  const add = (collection, key, value, source, missingPhotos = 0) => {
+  const add = async (collection, key, value, source, missingPhotos = 0) => {
     if (key === undefined || key === null || key === '') throw new Error(`Invalid ${collection} item`);
     const groupKey = `${collection}:${key}`;
     if (!groups.has(groupKey)) groups.set(groupKey, { collection, key, options: [], cloud: null });
     const group = groups.get(groupKey);
-    const signature = content(collection, value);
+    const signature = await content(collection, value);
     if (source === 'cloud') group.cloud = { signature, value };
     const existing = group.options.find(option => option.signature === signature);
     if (existing) { existing.sources.push(source); existing.missingPhotos[source] = missingPhotos; }
@@ -67,15 +72,15 @@ export async function prepareMerge(device, cloud, backup = null, { restoringBack
         entries.push(removed ? { ...entry, photo: null } : photo !== entry.photo ? { ...entry, photo } : entry);
       }
       const cleaned = { ...record, entries };
-      add('records', record.date, cleaned, source, missingPhotos);
+      await add('records', record.date, cleaned, source, missingPhotos);
     }
     for (const semester of data.semesters || []) {
       if (!semester || semester.id === undefined || semester.id === null) throw new Error('Invalid backup semester');
       const id = String(semester.id);
-      add('semesters', id, { ...semester, id: /^\d+$/.test(id) ? Number(id) : id }, source);
+      await add('semesters', id, { ...semester, id: /^\d+$/.test(id) ? Number(id) : id }, source);
     }
     const settings = Array.isArray(data.settings) ? data.settings[0] : data.settings;
-    if (settings) add('settings', 'v8', { ...settings, id: 'v8' }, source);
+    if (settings) await add('settings', 'v8', { ...settings, id: 'v8' }, source);
   }
   for (const item of cloud?.deletedItems || []) {
     if (!['records', 'semesters'].includes(item.collection)) continue;
