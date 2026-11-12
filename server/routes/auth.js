@@ -22,7 +22,7 @@ function getAdminEmails() {
 
 export function generateToken(user) {
   return jwt.sign(
-    { id: user.id, email: user.email, isAdmin: !!user.is_admin },
+    { id: user.id, email: user.email, isAdmin: !!user.is_admin, sessionNonce: user.session_nonce ?? getUserById(user.id)?.session_nonce ?? null },
     getJwtSecret(),
     { expiresIn: '90d' }
   );
@@ -39,6 +39,10 @@ export function requireAuth(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, getJwtSecret());
+    const user = getUserById(decoded.id);
+    if (!user || (user.session_nonce ?? null) !== (decoded.sessionNonce ?? null)) {
+      return res.status(401).json({ error: 'Session is no longer valid' });
+    }
     req.user = decoded;
     next();
   } catch (err) {

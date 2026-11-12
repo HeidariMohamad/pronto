@@ -9,6 +9,15 @@ export const backupText = {
     'Refreshing…': 'Refreshing…', 'Checking backup status…': 'Checking backup status…', 'Private & Secure · Self-hosted data storage': 'Private & Secure · Self-hosted data storage'
   },
   pt: {
+    'Delete account': 'Excluir conta',
+    'Delete account permanently?': 'Excluir conta permanentemente?',
+    'This permanently deletes this account, its cloud records, schedules, messages, photos and optimizer copies. This cannot be undone.': 'Isso exclui permanentemente a conta, os registros e horários na nuvem, as mensagens, as fotos e as cópias do otimizador. Esta ação não pode ser desfeita.',
+    'Data on the user’s devices and separate backups is not deleted. The user can sign in again and create a new account.': 'Os dados nos dispositivos do usuário e em backups separados não serão excluídos. O usuário poderá entrar novamente e criar uma nova conta.',
+    'Type the user’s email to confirm:': 'Digite o e-mail do usuário para confirmar:',
+    'Delete permanently': 'Excluir permanentemente',
+    'Deleting…': 'Excluindo…',
+    'Account deleted.': 'Conta excluída.',
+    'Could not finish deleting this account. Some files may have been removed. Check that the optimizer is not running, then try again.': 'Não foi possível concluir a exclusão. Alguns arquivos podem ter sido removidos. Verifique se o otimizador não está em execução e tente novamente.',
     'Backup status': 'Status do backup',
     'Could not check your backup. Connect and try again.': 'Não foi possível verificar o backup. Conecte-se e tente novamente.',
     '{saved} of {total} days on this device match your backup.': '{saved} de {total} dias neste dispositivo estão iguais ao backup.',
@@ -61,6 +70,15 @@ export const backupText = {
     'Failed to sign in with Google': 'Não foi possível entrar com o Google', 'Private & Secure · Self-hosted data storage': 'Privado e seguro · Dados armazenados em servidor próprio'
   },
   fa: {
+    'Delete account': 'حذف حساب',
+    'Delete account permanently?': 'حساب برای همیشه حذف شود؟',
+    'This permanently deletes this account, its cloud records, schedules, messages, photos and optimizer copies. This cannot be undone.': 'حساب، سوابق و برنامه‌های ابری، پیام‌ها، عکس‌ها و نسخه‌های بهینه‌ساز برای همیشه حذف می‌شوند. این کار قابل بازگشت نیست.',
+    'Data on the user’s devices and separate backups is not deleted. The user can sign in again and create a new account.': 'داده‌های دستگاه‌های کاربر و نسخه‌های پشتیبان جداگانه حذف نمی‌شوند. کاربر می‌تواند دوباره وارد شود و حساب جدید بسازد.',
+    'Type the user’s email to confirm:': 'برای تأیید، ایمیل کاربر را وارد کنید:',
+    'Delete permanently': 'حذف دائمی',
+    'Deleting…': 'در حال حذف…',
+    'Account deleted.': 'حساب حذف شد.',
+    'Could not finish deleting this account. Some files may have been removed. Check that the optimizer is not running, then try again.': 'حذف حساب کامل نشد. ممکن است برخی فایل‌ها حذف شده باشند. مطمئن شوید بهینه‌ساز در حال اجرا نیست و دوباره تلاش کنید.',
     'Backup status': 'وضعیت پشتیبان',
     'Could not check your backup. Connect and try again.': 'بررسی نسخه پشتیبان ممکن نشد. متصل شوید و دوباره تلاش کنید.',
     '{saved} of {total} days on this device match your backup.': '{saved} روز از {total} روز این دستگاه با نسخه پشتیبان یکسان است.',

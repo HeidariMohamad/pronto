@@ -171,6 +171,39 @@ router.get('/users/:id/data', requireAdmin, (req, res) => {
   }
 });
 
+// Permanent deletion is deliberately separate from suspension and requires an exact email confirmation.
+router.post('/users/:id/delete', requireAdmin, (req, res) => {
+  const target = getUserById(req.params.id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.id === req.user.id || target.is_admin) return res.status(403).json({ error: 'Administrator accounts cannot be deleted here' });
+  if (typeof target.email !== 'string' || !target.email || req.body?.email !== target.email) return res.status(400).json({ error: 'Email confirmation does not match' });
+  if (!/^[A-Za-z0-9_-]+$/.test(target.id)) return res.status(400).json({ error: 'Invalid user ID' });
+  if (getOptimizerJob()?.status === 'running') return res.status(409).json({ error: 'Wait for photo optimization to finish before deleting an account' });
+
+  const root = path.resolve(process.env.UPLOAD_DIR || path.join(path.dirname(fileURLToPath(import.meta.url)), '../uploads'));
+  const backupRoot = path.resolve(path.dirname(root), 'photo-optimization-backups');
+  const directories = [path.resolve(root, target.id), path.resolve(backupRoot, target.id)];
+  if (!directories[0].startsWith(root + path.sep) || !directories[1].startsWith(backupRoot + path.sep)) return res.status(400).json({ error: 'Invalid user path' });
+  try {
+    // Remove files first: if cleanup fails the account remains, so an admin can retry.
+    for (const dir of directories) fs.rmSync(dir, { recursive: true, force: true });
+    runTransaction(() => {
+      for (const row of db.prepare('SELECT id, data FROM optimizer_jobs').all()) {
+        const job = JSON.parse(row.data);
+        if (job.userId === target.id) job.userId = null;
+        if (job.currentUserId === target.id) job.currentUserId = null;
+        if (Array.isArray(job.users)) job.users = job.users.filter(user => user.id !== target.id);
+        db.prepare('UPDATE optimizer_jobs SET data = ? WHERE id = ?').run(JSON.stringify(job), row.id);
+      }
+      db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+    });
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('User deletion failed:', err);
+    return res.status(500).json({ error: 'Deletion did not finish. Some files may have been removed; try again.' });
+  }
+});
+
 router.get('/messages', requireAdmin, (req, res) => {
   try { res.json({ messages: getSupportMessages() }); }
   catch (err) { console.error('Fetch messages error:', err); res.status(500).json({ error: 'Failed to fetch messages' }); }

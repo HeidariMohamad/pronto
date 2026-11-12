@@ -51,6 +51,10 @@ const upload = multer({
 router.post('/', requireAuth, upload.single('photo'), (req, res) => {
   try {
     const user = getUserById(req.user.id);
+    if (!user || (user.session_nonce ?? null) !== (req.user.sessionNonce ?? null)) {
+      if (req.file) { try { fs.unlinkSync(req.file.path); } catch { /* The file may already have been removed. */ } }
+      return res.status(401).json({ error: 'Session is no longer valid' });
+    }
     if (user?.is_banned) {
       if (req.file) {
         try { fs.unlinkSync(req.file.path); } catch {}

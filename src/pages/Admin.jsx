@@ -115,6 +115,10 @@ export const AdminPage = () => {
   const [banningUser, setBanningUser] = useState(null);
   const [banReasonInput, setBanReasonInput] = useState('');
   const [processingBan, setProcessingBan] = useState(false);
+  const [deletingUser, setDeletingUser] = useState(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   // Messaging / Announcement composer state
   const [isComposeOpen, setIsComposeOpen] = useState(false);
@@ -218,6 +222,22 @@ export const AdminPage = () => {
       setError("Failed to update user ban status");
     } finally {
       setProcessingBan(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deletingUser || deleteConfirmation !== deletingUser.email || deletingAccount) return;
+    setDeletingAccount(true);
+    setDeleteError('');
+    try {
+      await api.post(`/api/admin/users/${encodeURIComponent(deletingUser.id)}/delete`, { email: deleteConfirmation });
+      showNotificationSuccess('Account deleted.');
+      setDeletingUser(null);
+      await fetchMetricsAndNotifications();
+    } catch {
+      setDeleteError('Could not finish deleting this account. Some files may have been removed. Check that the optimizer is not running, then try again.');
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -689,6 +709,7 @@ export const AdminPage = () => {
                       )
                     )}
                   </div>
+                  {!isSelf && !u.is_admin && <button type="button" onClick={() => { setDeletingUser(u); setDeleteConfirmation(''); setDeleteError(''); }} className="mt-3 flex items-center gap-1.5 text-[11px] text-red-400 hover:text-red-300"><Trash2 size={12} />{t('Delete account')}</button>}
                 </div>
               </div>
             );
@@ -701,6 +722,20 @@ export const AdminPage = () => {
           )}
         </div>
       </Card>
+
+      {deletingUser && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center overflow-y-auto p-4 bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
+          <div className="w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto bg-[#0d1520] border border-red-500/30 rounded-3xl p-5 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2"><AlertTriangle size={20} className="text-red-400" /><h3 id="delete-account-title" className="text-base font-bold text-white">{t('Delete account permanently?')}</h3></div>
+            <p className="text-sm text-slate-200 break-words">{deletingUser.name} · {deletingUser.email}</p>
+            <p className="text-xs text-slate-300 leading-relaxed">{t('This permanently deletes this account, its cloud records, schedules, messages, photos and optimizer copies. This cannot be undone.')}</p>
+            <p className="text-xs text-amber-300 leading-relaxed">{t('Data on the user’s devices and separate backups is not deleted. The user can sign in again and create a new account.')}</p>
+            <label className="block space-y-2 text-xs text-slate-300"><span>{t('Type the user’s email to confirm:')}</span><input type="text" autoComplete="off" spellCheck="false" value={deleteConfirmation} onChange={event => setDeleteConfirmation(event.target.value)} className="w-full rounded-xl border border-white/15 bg-black/30 p-3 text-sm text-white outline-none focus:border-red-400" /></label>
+            {deleteError && <p role="alert" className="text-xs text-red-300">{t(deleteError)}</p>}
+            <div className="flex gap-2"><button type="button" disabled={deletingAccount} onClick={() => setDeletingUser(null)} className="flex-1 rounded-xl bg-white/5 py-3 text-xs text-slate-200 disabled:opacity-50">{t('Cancel')}</button><button type="button" disabled={deletingAccount || deleteConfirmation !== deletingUser.email} onClick={handleDeleteUser} className="flex-1 rounded-xl bg-red-600 py-3 text-xs font-semibold text-white disabled:opacity-40">{deletingAccount ? t('Deleting…') : t('Delete permanently')}</button></div>
+          </div>
+        </div>, document.body
+      )}
 
       {/* Ban User Confirmation Modal */}
       {viewingUserData && createPortal(

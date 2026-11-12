@@ -91,6 +91,46 @@ test('inventory, deletion and explicit restore stay scoped to the signed-in acco
   assert.equal(getDeletedItems('user-a').length, 0);
 });
 
+test('admin deletion requires confirmation, removes account data and revokes old sessions', async () => {
+  const id = 'delete-test';
+  const email = `${id}@example.com`;
+  upsertUser({ id, google_id: id, email, name: 'Delete Test' });
+  const oldToken = token(id);
+  upsertRecord(id, { date: '2026-01-01', entries: [{ photo: 'data:image/png;base64,YWJj' }] });
+  upsertSettings(id, { language: 'en' }, 1);
+  addFileRecord('delete-photo', id, 'photo.jpg', 'photo.jpg', 4);
+  const userDir = path.join(uploadDir, id);
+  const backupDir = path.join(testRoot, 'photo-optimization-backups', id);
+  fs.mkdirSync(userDir, { recursive: true });
+  fs.mkdirSync(backupDir, { recursive: true });
+  fs.writeFileSync(path.join(userDir, 'photo.jpg'), 'data');
+  fs.writeFileSync(path.join(backupDir, 'original.jpg'), 'data');
+  db.prepare('INSERT INTO support_messages (user_id, message, created_at) VALUES (?, ?, ?)').run(id, 'private message', 1);
+  db.prepare('INSERT INTO optimizer_jobs (id, created_at, status, data) VALUES (?, ?, ?, ?)').run('delete-test-job', Date.now(), 'running', JSON.stringify({ id: 'delete-test-job', ownerPid: process.pid, userId: id, users: [{ id, email, name: 'Delete Test' }] }));
+  const route = `/api/admin/users/${id}/delete`;
+  assert.equal((await request('user-a', route, { email })).status, 403);
+  assert.equal((await request('admin', route, { email: 'wrong@example.com' })).status, 400);
+  assert.equal((await request('admin', '/api/admin/users/admin/delete', { email: 'admin@example.com' })).status, 403);
+  assert.equal((await request('admin', route, { email })).status, 409);
+  db.prepare('UPDATE optimizer_jobs SET status = ? WHERE id = ?').run('completed', 'delete-test-job');
+  assert.equal(getRecords(id).length, 1);
+  assert.equal((await request('admin', route, { email })).status, 200);
+  assert.equal(db.prepare('SELECT id FROM users WHERE id = ?').get(id), undefined);
+  assert.equal(getRecords(id).length, 0);
+  assert.equal(db.prepare('SELECT id FROM files WHERE user_id = ?').get(id), undefined);
+  assert.equal(db.prepare('SELECT id FROM support_messages WHERE user_id = ?').get(id), undefined);
+  const job = JSON.parse(db.prepare('SELECT data FROM optimizer_jobs WHERE id = ?').get('delete-test-job').data);
+  assert.equal(job.userId, null);
+  assert.deepEqual(job.users, []);
+  assert.equal(fs.existsSync(userDir), false);
+  assert.equal(fs.existsSync(backupDir), false);
+  assert.equal((await fetch(`${base}/api/sync/pull`, { headers: { Authorization: `Bearer ${oldToken}` } })).status, 401);
+  upsertUser({ id, google_id: id, email, name: 'Recreated' });
+  assert.equal((await fetch(`${base}/api/sync/pull`, { headers: { Authorization: `Bearer ${oldToken}` } })).status, 401);
+  assert.equal((await request(id, '/api/sync/pull')).status, 200);
+  assert.ok(db.prepare('SELECT id FROM users WHERE id = ?').get('user-a'));
+});
+
 test('server optimizer previews and runs per user with admin-only persistent progress', async () => {
   const users = ['optimizer-a', 'optimizer-b'];
   const pixels = Buffer.alloc(700 * 700 * 3);

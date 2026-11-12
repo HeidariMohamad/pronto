@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -111,6 +111,7 @@ try {
 
 try { db.exec('ALTER TABLE users ADD COLUMN last_seen_at INTEGER DEFAULT NULL'); } catch { /* Existing database. */ }
 try { db.exec('ALTER TABLE users ADD COLUMN last_sync_at INTEGER DEFAULT NULL'); } catch { /* Existing database. */ }
+try { db.exec('ALTER TABLE users ADD COLUMN session_nonce TEXT DEFAULT NULL'); } catch { /* Existing database. */ }
 
 export function noteUserConnection(userId, sync = false) {
   const now = Date.now();
@@ -206,9 +207,9 @@ export function upsertUser({ id, google_id, email, name, avatar_url = '', is_adm
     return db.prepare('SELECT * FROM users WHERE google_id = ?').get(google_id);
   } else {
     db.prepare(`
-      INSERT INTO users (id, google_id, email, name, avatar_url, is_admin)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, google_id, email, name, safeAvatar, is_admin);
+      INSERT INTO users (id, google_id, email, name, avatar_url, is_admin, session_nonce)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(id, google_id, email, name, safeAvatar, is_admin, randomUUID());
     return db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   }
 }
